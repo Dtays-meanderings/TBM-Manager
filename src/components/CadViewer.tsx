@@ -1588,6 +1588,9 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                     e.preventDefault();
                     if (activeTool === 'sketch_line') {
                         setActiveLineStart(null); // Right click to detach drawing pen
+                    } else if (isSketching) {
+                        // Right click anywhere else while sketching snaps the camera back
+                        setCameraAlignTrigger(prev => prev + 1);
                     }
                 }}
                 onPointerMissed={(e) => {
@@ -1642,25 +1645,29 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                     }}
                 >
                     {nodes?.filter((n: any) => n.lcsVisible).map((n: any) => (
-                        <group
-                            key={`lcs - ${n.id} `}
-                            position={n.transform?.position}
-                            rotation={n.transform?.rotation}
-                            scale={n.transform?.scale}
-                        >
-                            {!isSketching && <LCSPlane scale={settings.lcsSize * 1.2} />}
-                        </group>
+                        !isSketching && (
+                            <group
+                                key={`lcs - ${n.id} `}
+                                position={n.transform?.position}
+                                rotation={n.transform?.rotation}
+                                scale={n.transform?.scale}
+                            >
+                                <LCSPlane scale={settings.lcsSize * 1.2} />
+                            </group>
+                        )
                     ))}
                     {/* Render explicit user standalone lcs_plane objects */}
                     {nodes?.filter((n: any) => n.type === 'lcs_plane' && n.visible).map((n: any) => (
-                        <group
-                            key={`standalone - lcs - ${n.id} `}
-                            position={n.transform?.position}
-                            rotation={n.transform?.rotation}
-                            scale={n.transform?.scale}
-                        >
-                            <LCSPlane scale={settings.lcsSize * 1.5} />
-                        </group>
+                        !isSketching && (
+                            <group
+                                key={`standalone - lcs - ${n.id} `}
+                                position={n.transform?.position}
+                                rotation={n.transform?.rotation}
+                                scale={n.transform?.scale}
+                            >
+                                <LCSPlane scale={settings.lcsSize * 1.5} />
+                            </group>
+                        )
                     ))}
                     {renderMode === 'mesh' && geometry && (
                         <group>

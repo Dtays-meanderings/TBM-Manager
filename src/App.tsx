@@ -556,8 +556,9 @@ function App() {
                     setActiveNodeId(newSketchId);
                     setActiveTab('sketch');
                     setActiveTool('sketch_plane');
+                    setDraftingPlane(null); // Clear active plane explicitly
                     cadViewerRef.current?.clearSketch();
-                    cadViewerRef.current?.setIsoView();
+                    cadViewerRef.current?.setIsoView(); // Show grid in 3D initially so they can pick a plane face
                   }}
                 >
                   <PenTool size={16} style={{ marginRight: '8px', display: 'inline' }} /> Create Body & Sketch
@@ -1177,7 +1178,12 @@ function App() {
               draftingPlane={draftingPlane}
               preDraftingPlane={preDraftingPlane}
               onHoverDraftingPlane={setPreDraftingPlane}
-              onSelectDraftingPlane={setDraftingPlane}
+              onSelectDraftingPlane={(plane) => {
+                setDraftingPlane(plane);
+                if (plane) {
+                  setTimeout(() => cadViewerRef.current?.snapToActivePlane(), 10);
+                }
+              }}
               // Map origin controls to the parent Part if applicable, otherwise self.
               originTransform={nodes.find(n => n.id === activeConfig.parentId)?.transform || activeConfig.transform}
               onOriginTransformStart={() => pushToHistory()}
