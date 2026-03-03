@@ -1645,29 +1645,25 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                     }}
                 >
                     {nodes?.filter((n: any) => n.lcsVisible).map((n: any) => (
-                        !isSketching && (
-                            <group
-                                key={`lcs - ${n.id} `}
-                                position={n.transform?.position}
-                                rotation={n.transform?.rotation}
-                                scale={n.transform?.scale}
-                            >
-                                <LCSPlane scale={settings.lcsSize * 1.2} />
-                            </group>
-                        )
+                        <group
+                            key={`lcs - ${n.id} `}
+                            position={n.transform?.position}
+                            rotation={n.transform?.rotation}
+                            scale={n.transform?.scale}
+                        >
+                            <LCSPlane scale={settings.lcsSize * 1.2} visible={!isSketching} />
+                        </group>
                     ))}
                     {/* Render explicit user standalone lcs_plane objects */}
                     {nodes?.filter((n: any) => n.type === 'lcs_plane' && n.visible).map((n: any) => (
-                        !isSketching && (
-                            <group
-                                key={`standalone - lcs - ${n.id} `}
-                                position={n.transform?.position}
-                                rotation={n.transform?.rotation}
-                                scale={n.transform?.scale}
-                            >
-                                <LCSPlane scale={settings.lcsSize * 1.5} />
-                            </group>
-                        )
+                        <group
+                            key={`standalone - lcs - ${n.id} `}
+                            position={n.transform?.position}
+                            rotation={n.transform?.rotation}
+                            scale={n.transform?.scale}
+                        >
+                            <LCSPlane scale={settings.lcsSize * 1.5} visible={!isSketching} />
+                        </group>
                     ))}
                     {renderMode === 'mesh' && geometry && (
                         <group>
