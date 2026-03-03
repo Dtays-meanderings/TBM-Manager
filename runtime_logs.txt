@@ -1,0 +1,1 @@
+bash: ./release/0.0.0/linux-unpacked/electron-occt-app: No such file or directory
