@@ -1517,7 +1517,13 @@ function App() {
                       style={{ width: '100%', padding: '0.4rem', marginTop: '0.5rem', borderColor: '#38bdf8', color: '#38bdf8' }}
                       onClick={() => {
                         if ((activeNode.params as any)?.lines && cadViewerRef.current) {
-                          cadViewerRef.current.loadSketch((activeNode.params as any).lines, ((activeNode.params as any).plane || 'xy') as 'xy' | 'xz' | 'yz');
+                          const sketchPlane = ((activeNode.params as any).plane || 'xy') as 'xy' | 'xz' | 'yz';
+                          cadViewerRef.current.loadSketch((activeNode.params as any).lines, sketchPlane);
+                          setDraftingPlane(sketchPlane);
+                          // Defer the snap by a microtask so it triggers *after* draftingPlane updates
+                          setTimeout(() => {
+                            cadViewerRef.current?.snapToActivePlane();
+                          }, 10);
                           setIsEditingSketch(true);
                           setActiveTab('sketch');
                           setActiveTool('sketch_line');

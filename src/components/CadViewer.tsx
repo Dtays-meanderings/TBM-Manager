@@ -19,6 +19,7 @@ export interface CadViewerRef {
     closeSketch: () => void;
     clearSketch: () => void;
     handleUndo: (params: { lines?: { start: { x: number, y: number, z: number }, end: { x: number, y: number, z: number } }[], points?: { x: number, y: number, z: number }[] }) => void;
+    snapToActivePlane: () => void;
 }
 
 export interface CadOperation {
@@ -450,6 +451,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
     const isDraggingPivot = useRef(false);
     const initialOrigin = useRef<{ position: [number, number, number], rotation: [number, number, number], scale: [number, number, number] } | null>(null);
     const pivotRef = useRef<any>(null); // For Drei PivotControls
+    const [cameraAlignTrigger, setCameraAlignTrigger] = useState(0);
 
     // Sync external changes to the PivotMatrix when not dragging
     useEffect(() => {
@@ -652,6 +654,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
             onSelectDraftingPlane?.(null);
         },
         setIsoView: () => setIsoViewTrigger(prev => prev + 1),
+        snapToActivePlane: () => { setCameraAlignTrigger(prev => prev + 1); },
         handleUndo: (params: { lines?: { start: { x: number, y: number, z: number }, end: { x: number, y: number, z: number } }[], points?: { x: number, y: number, z: number }[] }) => {
             const rawLines = (params as any)?.lines || [];
             const reconstructedLines = rawLines.map((l: { start: { x: number, y: number, z: number }, end: { x: number, y: number, z: number } }) => ({
@@ -1576,6 +1579,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
         return null;
     }, [selectedFeature, featureMap, geometry, edgeGeometry]);
     const isPlaneInteractive = activeTool === 'sketch_plane' || activeTool.startsWith('sketch_') || activeTool === 'select_sweep_path';
+    const isSketching = activeTool === 'sketch_point' || activeTool === 'sketch_line' || activeTool === 'sketch_plane';
 
     return (
         <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -1644,7 +1648,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                             rotation={n.transform?.rotation}
                             scale={n.transform?.scale}
                         >
-                            <LCSPlane scale={settings.lcsSize * 1.2} />
+                            {!isSketching && <LCSPlane scale={settings.lcsSize * 1.2} />}
                         </group>
                     ))}
                     {/* Render explicit user standalone lcs_plane objects */}
@@ -2425,7 +2429,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                                         </group>
                                     </group>
                                 )}
-                                <CameraAligner draftingPlane={draftingPlane} isoViewTrigger={isoViewTrigger} />
+                                <CameraAligner draftingPlane={draftingPlane} isoViewTrigger={isoViewTrigger} alignTrigger={cameraAlignTrigger} />
                             </group>
                         </group>
                     )
@@ -2632,7 +2636,7 @@ function SnapSystem({ snapPoints, onActiveSnapChange, isActive = true }: { snapP
     );
 }
 
-function CameraAligner({ draftingPlane, isoViewTrigger }: { draftingPlane: 'xy' | 'xz' | 'yz' | null, isoViewTrigger?: number }) {
+function CameraAligner({ draftingPlane, isoViewTrigger, alignTrigger }: { draftingPlane: 'xy' | 'xz' | 'yz' | null, isoViewTrigger?: number, alignTrigger?: number }) {
     const { camera, controls } = useThree();
 
     useEffect(() => {
@@ -2676,7 +2680,7 @@ function CameraAligner({ draftingPlane, isoViewTrigger }: { draftingPlane: 'xy' 
             (controls as any).update();
         }
 
-    }, [draftingPlane, camera, controls]);
+    }, [draftingPlane, camera, controls, alignTrigger]);
 
     return null;
 }
