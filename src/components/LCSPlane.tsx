@@ -36,6 +36,7 @@ export default function LCSPlane({
 }: LCSPlaneProps) {
     const groupRef = useRef<THREE.Group>(null);
     const { camera } = useThree();
+    const [hoveredPlane, setHoveredPlane] = useState<PlaneId | null>(null);
 
     // Constant screen size scaling
     useFrame(() => {
@@ -96,26 +97,29 @@ export default function LCSPlane({
     // Helper function for the Planes
     const renderPlane = (id: PlaneId, color: string, eulerRot: [number, number, number], offsetPos: [number, number, number], label: string) => {
         if (activePlane && activePlane !== id) return null; // hide inactive planes if one is selected
+        const currentSize = hoveredPlane === id ? planeSize * 1.2 : planeSize;
+        const currentOffset = offsetPos.map(v => v === 0 ? 0 : Math.sign(v) * (Math.abs(v) + (hoveredPlane === id ? planeSize * 0.1 : 0))) as [number, number, number];
+
         return (
             <group rotation={eulerRot}>
                 <mesh
-                    position={offsetPos}
+                    position={currentOffset}
                     onClick={(e) => { e.stopPropagation(); onPlaneClick?.(id, e); onClick?.(e); }}
                     onPointerMove={(e) => onPlanePointerMove?.(id, e)}
-                    onPointerOver={(e) => { e.stopPropagation(); onPlanePointerOver?.(id, e); onPointerOver?.(e); }}
-                    onPointerOut={(e) => { onPlanePointerOut?.(id, e); onPointerOut?.(e); }}
+                    onPointerOver={(e) => { e.stopPropagation(); setHoveredPlane(id); onPlanePointerOver?.(id, e); onPointerOver?.(e); }}
+                    onPointerOut={(e) => { setHoveredPlane(null); onPlanePointerOut?.(id, e); onPointerOut?.(e); }}
                 >
-                    <planeGeometry args={[planeSize, planeSize]} />
-                    <meshBasicMaterial color={color} depthTest={false} transparent opacity={0.4} side={THREE.DoubleSide} />
+                    <planeGeometry args={[currentSize, currentSize]} />
+                    <meshBasicMaterial color={color} depthTest={false} transparent opacity={hoveredPlane === id ? 0.6 : 0.4} side={THREE.DoubleSide} />
                 </mesh>
                 {/* Wireframe outline for visibility as drawn in sketch */}
-                <lineSegments position={offsetPos}>
-                    <edgesGeometry args={[new THREE.PlaneGeometry(planeSize, planeSize)]} />
+                <lineSegments position={currentOffset}>
+                    <edgesGeometry args={[new THREE.PlaneGeometry(currentSize, currentSize)]} />
                     <lineBasicMaterial color={color} transparent opacity={0.8} depthTest={false} />
                 </lineSegments>
                 {/* XY / XZ / YZ Labels (Front) */}
                 <Text
-                    position={[offsetPos[0] + planeSize / 2 - 0.7, offsetPos[1] + planeSize / 2 - 0.7, offsetPos[2] + 0.01]}
+                    position={[currentOffset[0] + currentSize / 2 - 0.7, currentOffset[1] + currentSize / 2 - 0.7, currentOffset[2] + 0.01]}
                     fontSize={1.0}
                     color={color}
                     material-depthTest={false}
@@ -126,7 +130,7 @@ export default function LCSPlane({
                 </Text>
                 {/* XY / XZ / YZ Labels (Back) */}
                 <Text
-                    position={[offsetPos[0] + planeSize / 2 - 0.7, offsetPos[1] + planeSize / 2 - 0.7, offsetPos[2] - 0.01]}
+                    position={[currentOffset[0] + currentSize / 2 - 0.7, currentOffset[1] + currentSize / 2 - 0.7, currentOffset[2] - 0.01]}
                     rotation={[0, Math.PI, 0]}
                     fontSize={1.0}
                     color={color}
