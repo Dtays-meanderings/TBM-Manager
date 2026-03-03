@@ -46,6 +46,7 @@ export interface CadViewerProps {
     onHoverDraftingPlane?: (plane: 'xy' | 'xz' | 'yz' | null) => void;
     onSelectDraftingPlane?: (plane: 'xy' | 'xz' | 'yz' | null) => void;
     originTransform?: { position: [number, number, number], rotation: [number, number, number], scale: [number, number, number] };
+    onOriginTransformStart?: () => void;
     onOriginTransformChange?: (transform: { position: [number, number, number], rotation: [number, number, number], scale: [number, number, number] }) => void;
     showGrid?: boolean;
     showWCS?: boolean;
@@ -403,6 +404,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
     onHoverDraftingPlane,
     onSelectDraftingPlane,
     originTransform = { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    onOriginTransformStart,
     onOriginTransformChange,
     showGrid = false,
     showWCS = true,
@@ -1867,6 +1869,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                                             rotation: [...originTransform.rotation],
                                             scale: [...originTransform.scale]
                                         };
+                                        onOriginTransformStart?.();
                                     }}
                                     onDragEnd={() => { isDraggingPivot.current = false; }}
                                     onDrag={(l) => {

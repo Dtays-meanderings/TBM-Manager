@@ -63,13 +63,12 @@ export default function LCSPlane({
 
     // Axis parameters
     const axisLength = 4.0;
-    const cylinderRadius = 0.15;
-    const coneHeight = 1.0;
-    const coneRadius = 0.4;
+    const cylinderRadius = 0.25; // thicker
+    const coneHeight = 1.2;
+    const coneRadius = 0.55; // thicker
 
     // Plane parameters
     const planeSize = 3.0;
-    const planeThickness = 0.1;
 
     // Calculate start positions to enforce the 'gap' from the origin
     const axisStartDist = originRadius + gap;
@@ -106,17 +105,28 @@ export default function LCSPlane({
                     onPointerOver={(e) => { e.stopPropagation(); onPlanePointerOver?.(id, e); onPointerOver?.(e); }}
                     onPointerOut={(e) => { onPlanePointerOut?.(id, e); onPointerOut?.(e); }}
                 >
-                    <boxGeometry args={[planeSize, planeSize, planeThickness]} />
+                    <planeGeometry args={[planeSize, planeSize]} />
                     <meshBasicMaterial color={color} depthTest={false} transparent opacity={0.4} side={THREE.DoubleSide} />
                 </mesh>
                 {/* Wireframe outline for visibility as drawn in sketch */}
                 <lineSegments position={offsetPos}>
-                    <edgesGeometry args={[new THREE.BoxGeometry(planeSize, planeSize, planeThickness)]} />
+                    <edgesGeometry args={[new THREE.PlaneGeometry(planeSize, planeSize)]} />
                     <lineBasicMaterial color={color} transparent opacity={0.8} depthTest={false} />
                 </lineSegments>
-                {/* XY / XZ / YZ Labels */}
+                {/* XY / XZ / YZ Labels (Front) */}
                 <Text
-                    position={[offsetPos[0] + planeSize / 2 - 0.7, offsetPos[1] + planeSize / 2 - 0.7, offsetPos[2] + planeThickness]}
+                    position={[offsetPos[0] + planeSize / 2 - 0.7, offsetPos[1] + planeSize / 2 - 0.7, offsetPos[2]]}
+                    fontSize={1.0}
+                    color={color}
+                    material-depthTest={false}
+                    renderOrder={1000}
+                >
+                    {label}
+                </Text>
+                {/* XY / XZ / YZ Labels (Back) */}
+                <Text
+                    position={[offsetPos[0] + planeSize / 2 - 0.7, offsetPos[1] + planeSize / 2 - 0.7, offsetPos[2]]}
+                    rotation={[0, Math.PI, 0]}
                     fontSize={1.0}
                     color={color}
                     material-depthTest={false}

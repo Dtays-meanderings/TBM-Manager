@@ -1180,6 +1180,7 @@ function App() {
               onSelectDraftingPlane={setDraftingPlane}
               // Map origin controls to the parent Part if applicable, otherwise self.
               originTransform={nodes.find(n => n.id === activeConfig.parentId)?.transform || activeConfig.transform}
+              onOriginTransformStart={() => pushToHistory()}
               onOriginTransformChange={(t) => {
                 const targetId = activeConfig.parentId || activeConfig.id;
                 setNodes((prev: SceneNode[]) => {
