@@ -1152,7 +1152,6 @@ function App() {
               renderMode={renderMode}
               showGrid={showGrid}
               showWCS={showWCS}
-              showLCS={showLCS}
               selectedFeature={activeTool !== 'select' ? null : selectedFeature}
               onSelectFeature={(type: 'edge' | 'face', index: number) => {
                 if (activeTool === 'select') setSelectedFeature({ type, index })
@@ -1338,24 +1337,26 @@ function App() {
 
                       {node.expanded && (
                         <>
-                          <div
-                            className={`tree-node nested`}
-                            style={{ opacity: node.lcsVisible ? 1 : 0.5 }}
-                          >
-                            <div className="tree-icon" style={{ marginLeft: '14px' }}><Focus size={14} /></div>
-                            <span style={{ flex: 1, fontStyle: 'italic', fontSize: '0.85em', color: '#94a3b8' }}>Local Coordinate System</span>
-                            <button
-                              className="icon-btn"
-                              title={node.lcsVisible ? "Hide" : "Show"}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setNodes(prev => prev.map(n => n.id === node.id ? { ...n, lcsVisible: !n.lcsVisible } : n));
-                              }}
-                              style={{ padding: '2px', marginLeft: '4px', background: 'transparent', border: 'none', color: node.lcsVisible ? '#94a3b8' : '#f43f5e', cursor: 'pointer' }}
+                          {node.type !== 'lcs_plane' && (
+                            <div
+                              className={`tree-node nested`}
+                              style={{ opacity: node.lcsVisible ? 1 : 0.5 }}
                             >
-                              {node.lcsVisible ? <Eye size={14} /> : <EyeOff size={14} />}
-                            </button>
-                          </div>
+                              <div className="tree-icon" style={{ marginLeft: '14px' }}><Focus size={14} /></div>
+                              <span style={{ flex: 1, fontStyle: 'italic', fontSize: '0.85em', color: '#94a3b8' }}>Local Coordinate System</span>
+                              <button
+                                className="icon-btn"
+                                title={node.lcsVisible ? "Hide" : "Show"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setNodes(prev => prev.map(n => n.id === node.id ? { ...n, lcsVisible: !n.lcsVisible } : n));
+                                }}
+                                style={{ padding: '2px', marginLeft: '4px', background: 'transparent', border: 'none', color: node.lcsVisible ? '#94a3b8' : '#f43f5e', cursor: 'pointer' }}
+                              >
+                                {node.lcsVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+                              </button>
+                            </div>
+                          )}
 
                           {node.operations?.map((op, idx) => (
                             <div
@@ -1407,24 +1408,26 @@ function App() {
 
                               {child.expanded && (
                                 <>
-                                  <div
-                                    className={`tree-node nested`}
-                                    style={{ opacity: child.lcsVisible ? 1 : 0.5, paddingLeft: '3rem', borderLeft: '2px solid #334155' }}
-                                  >
-                                    <div className="tree-icon" style={{ marginLeft: '14px' }}><Focus size={14} /></div>
-                                    <span style={{ flex: 1, fontStyle: 'italic', fontSize: '0.85em', color: '#94a3b8' }}>Local Coordinate System</span>
-                                    <button
-                                      className="icon-btn"
-                                      title={child.lcsVisible ? "Hide" : "Show"}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setNodes(prev => prev.map(n => n.id === child.id ? { ...n, lcsVisible: !n.lcsVisible } : n));
-                                      }}
-                                      style={{ padding: '2px', marginLeft: '4px', background: 'transparent', border: 'none', color: child.lcsVisible ? '#94a3b8' : '#f43f5e', cursor: 'pointer' }}
+                                  {child.type !== 'lcs_plane' && (
+                                    <div
+                                      className={`tree-node nested`}
+                                      style={{ opacity: child.lcsVisible ? 1 : 0.5, paddingLeft: '3rem', borderLeft: '2px solid #334155' }}
                                     >
-                                      {child.lcsVisible ? <Eye size={14} /> : <EyeOff size={14} />}
-                                    </button>
-                                  </div>
+                                      <div className="tree-icon" style={{ marginLeft: '14px' }}><Focus size={14} /></div>
+                                      <span style={{ flex: 1, fontStyle: 'italic', fontSize: '0.85em', color: '#94a3b8' }}>Local Coordinate System</span>
+                                      <button
+                                        className="icon-btn"
+                                        title={child.lcsVisible ? "Hide" : "Show"}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setNodes(prev => prev.map(n => n.id === child.id ? { ...n, lcsVisible: !n.lcsVisible } : n));
+                                        }}
+                                        style={{ padding: '2px', marginLeft: '4px', background: 'transparent', border: 'none', color: child.lcsVisible ? '#94a3b8' : '#f43f5e', cursor: 'pointer' }}
+                                      >
+                                        {child.lcsVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+                                      </button>
+                                    </div>
+                                  )}
 
                                   {child.operations?.map((op, idx) => (
                                     <div

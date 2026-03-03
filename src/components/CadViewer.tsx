@@ -49,7 +49,6 @@ export interface CadViewerProps {
     onOriginTransformChange?: (transform: { position: [number, number, number], rotation: [number, number, number], scale: [number, number, number] }) => void;
     showGrid?: boolean;
     showWCS?: boolean;
-    showLCS?: boolean;
     selectedSketchElements?: { type: 'point' | 'line', index: number }[];
     onSelectSketchElement?: (type: 'point' | 'line', index: number, isShift: boolean) => void;
     constraints?: { type: string, value?: number, elements: { type: string, index: number }[] }[];
@@ -407,7 +406,6 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
     onOriginTransformChange,
     showGrid = false,
     showWCS = true,
-    showLCS = true,
     selectedSketchElements = [],
     onSelectSketchElement,
     constraints = [],
@@ -1907,6 +1905,10 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                                     }}
                                 />
                             )}
+                            {/* Global WCS 3-vector marker (unique styling, absolutely fixed to true world [0,0,0]) */}
+                            {showWCS && !draftingPlane && (
+                                <axesHelper args={[settings.lcsSize * 4]} />
+                            )}
                             <group ref={trihedronGroupRef} position={originTransform.position} rotation={new THREE.Euler(...originTransform.rotation)} scale={new THREE.Vector3(...originTransform.scale)}>
                                 <>
                                     {draftingPlane && (
@@ -1919,8 +1921,10 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                                             {(draftingPlane === 'xz' || draftingPlane === 'yz') && <Line points={[[0, 0, -10000], [0, 0, 10000]]} color="#3b82f6" lineWidth={1} />}
                                         </group>
                                     )}
-                                    {/* Using Custom LCSPlane for visual display and plane selection */}
-                                    {(!draftingPlane || isPlaneInteractive) && (showWCS || isPlaneInteractive) && (
+
+
+                                    {/* Using Custom LCSPlane purely for visual interactive plane selection */}
+                                    {(!draftingPlane || isPlaneInteractive) && isPlaneInteractive && (
                                         <LCSPlane
                                             scale={settings.lcsSize * 2.5}
                                             activePlane={draftingPlane}
