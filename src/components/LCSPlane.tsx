@@ -115,21 +115,23 @@ export default function LCSPlane({
                 </lineSegments>
                 {/* XY / XZ / YZ Labels (Front) */}
                 <Text
-                    position={[offsetPos[0] + planeSize / 2 - 0.7, offsetPos[1] + planeSize / 2 - 0.7, offsetPos[2]]}
+                    position={[offsetPos[0] + planeSize / 2 - 0.7, offsetPos[1] + planeSize / 2 - 0.7, offsetPos[2] + 0.01]}
                     fontSize={1.0}
                     color={color}
                     material-depthTest={false}
+                    material-side={THREE.FrontSide}
                     renderOrder={1000}
                 >
                     {label}
                 </Text>
                 {/* XY / XZ / YZ Labels (Back) */}
                 <Text
-                    position={[offsetPos[0] + planeSize / 2 - 0.7, offsetPos[1] + planeSize / 2 - 0.7, offsetPos[2]]}
+                    position={[offsetPos[0] + planeSize / 2 - 0.7, offsetPos[1] + planeSize / 2 - 0.7, offsetPos[2] - 0.01]}
                     rotation={[0, Math.PI, 0]}
                     fontSize={1.0}
                     color={color}
                     material-depthTest={false}
+                    material-side={THREE.FrontSide}
                     renderOrder={1000}
                 >
                     {label}
