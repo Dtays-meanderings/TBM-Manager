@@ -25,4 +25,8 @@ release
 *.sln
 *.sw?
 scratch/
-scratch/
+
+# Testing and artifacts
+playwright-report/
+test-results/
+.desloppify/

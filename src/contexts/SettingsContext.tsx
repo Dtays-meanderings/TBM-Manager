@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type AppSettings = {
     gizmoScale: number;
+    enableGizmoScaling: boolean;
     lcsSize: number;
     gridSize: number;
     backgroundColor: string;
@@ -11,6 +12,7 @@ export type AppSettings = {
 
 export const defaultSettings: AppSettings = {
     gizmoScale: 1.0,  // Scale multiplier, or fixed pixel size for the gizmo dragger
+    enableGizmoScaling: false, // Disables the scale interaction cubes by default
     lcsSize: 10,      // Scale multiplier for the LCS planes
     gridSize: 200,    // Defines the `<Grid>` extents in both axes
     backgroundColor: '#020617', // Canvas background CSS

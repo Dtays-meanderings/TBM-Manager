@@ -17,7 +17,8 @@ interface LCSPlaneProps {
     onPlanePointerMove?: (plane: PlaneId, e: any) => void;
     onPlanePointerOver?: (plane: PlaneId, e: any) => void;
     onPlanePointerOut?: (plane: PlaneId, e: any) => void;
-    activePlane?: PlaneId | null; // if set, maybe we hide the other planes? (optional)
+    activePlane?: PlaneId | string | null; // if set, maybe we hide the other planes? (optional)
+    interactive?: boolean;
 }
 
 export default function LCSPlane({
@@ -32,7 +33,8 @@ export default function LCSPlane({
     onPlanePointerMove,
     onPlanePointerOver,
     onPlanePointerOut,
-    activePlane
+    activePlane,
+    interactive = true
 }: LCSPlaneProps) {
     const groupRef = useRef<THREE.Group>(null);
     const { camera } = useThree();
@@ -54,8 +56,6 @@ export default function LCSPlane({
             groupRef.current.scale.set(s, s, s);
         }
     });
-
-    if (!visible) return null;
 
     // Design parameters based on user sketch: 
     // "important details... separation of the objects (gaps between planes, points, and vector handles)"
@@ -108,6 +108,7 @@ export default function LCSPlane({
                     onPointerMove={(e) => onPlanePointerMove?.(id, e)}
                     onPointerOver={(e) => { e.stopPropagation(); setHoveredPlane(id); onPlanePointerOver?.(id, e); onPointerOver?.(e); }}
                     onPointerOut={(e) => { setHoveredPlane(null); onPlanePointerOut?.(id, e); onPointerOut?.(e); }}
+                    raycast={interactive ? undefined : () => null}
                 >
                     <planeGeometry args={[currentSize, currentSize]} />
                     <meshBasicMaterial color={color} depthTest={false} transparent opacity={hoveredPlane === id ? 0.6 : 0.4} side={THREE.DoubleSide} />
@@ -153,6 +154,7 @@ export default function LCSPlane({
             onPointerOver={onPointerOver}
             onPointerOut={onPointerOut}
             onClick={onClick}
+            visible={visible}
         >
             {/* 1. Origin Point (A rounded styled point, not a perfect sphere if you prefer, but standard sphere is clean) */}
             <mesh>

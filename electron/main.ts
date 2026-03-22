@@ -31,12 +31,16 @@ let win: BrowserWindow | null
 
 function createWindow() {
   win = new BrowserWindow({
+    show: false,
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       webSecurity: false,
     },
   })
+
+  win.maximize()
+  win.show()
 
   // Test active push message to Renderer-process.
   win.webContents.on('did-finish-load', () => {
@@ -244,7 +248,7 @@ app.whenReady().then(() => {
     return {}
   })
 
-  ipcMain.handle('save-settings', async (_event, settings: any) => {
+  ipcMain.handle('save-settings', async (_event, settings: Record<string, unknown>) => {
     const settingsPath = path.join(app.getPath('userData'), 'settings.json')
     try {
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2))

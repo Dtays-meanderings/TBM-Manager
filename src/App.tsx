@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Box, Play, Download, Cylinder as CylinderIcon, Circle, Ruler, MousePointer2, Grid as GridIcon, Focus, Minus, Layers, PenTool, Activity, Link, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Maximize2, Copy, Square, Triangle, Eye, EyeOff, Settings as SettingsIcon, ChevronRight, ChevronDown } from 'lucide-react'
+import { Box, Cylinder as CylinderIcon, Circle, Grid as GridIcon, Focus, Layers, PenTool, Activity, Eye, EyeOff, Settings as SettingsIcon, ChevronRight, ChevronDown } from 'lucide-react'
 import * as THREE from 'three'
 import { evaluate } from 'mathjs'
 import './App.css'
 import CadViewer, { CadViewerRef, CadOperation } from './components/CadViewer'
 import SettingsPanel from './components/SettingsPanel'
 
-export type ShapeType = 'box' | 'cylinder' | 'sphere' | 'step' | 'iges' | 'brep' | 'stl' | 'extrude' | 'revolve' | 'lcs_plane' | 'none' | 'sketch' | 'part' | 'boolean';
-export type ActiveTool = 'select' | 'measure' | 'sketch_plane' | 'sketch_point' | 'sketch_line' | 'transform_translate' | 'transform_rotate' | 'transform_scale' | 'constrain_dimension' | 'constrain_horizontal_dist' | 'constrain_vertical_dist' | 'constrain_distance' | 'constrain_radius_diameter' | 'constrain_radius' | 'constrain_diameter' | 'constrain_angle' | 'constrain_lock' | 'constrain_coincident' | 'constrain_point_on_object' | 'constrain_horizontal' | 'constrain_vertical' | 'constrain_parallel' | 'constrain_perpendicular' | 'constrain_tangent' | 'constrain_equal' | 'constrain_symmetric' | 'constrain_block' | 'constrain_refraction' | 'constrain_toggle_driving' | 'constrain_toggle_active' | 'select_sweep_path'
+import { ShapeType, ActiveTool } from './types';
+import { LeftSidebar } from './components/LeftSidebar';
 
 function App() {
   const [isOcctReady, setIsOcctReady] = useState(false)
@@ -106,7 +106,7 @@ function App() {
   const [, setRedoHistory] = useState<SceneNode[][]>([]);
 
   // We explicitly ignore the legacy newParams arg; we just snapshot the global tree.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+   
   const pushToHistory = (_newParams?: unknown) => {
     setHistory(prev => [...prev.slice(-19), JSON.parse(JSON.stringify(nodes))]); // Keep last 20 states
     setRedoHistory([]); // Branching history clears the redo path
@@ -151,6 +151,11 @@ function App() {
 
   // Keyboard shortcut for Undo/Redo (Ctrl+Z / Ctrl+Y) and OS Menu hook
   useEffect(() => {
+    // Increase global Raycaster selection pixel tolerance for thin Gizmo Lines correctly
+    if (THREE.Raycaster && THREE.Raycaster.params && THREE.Raycaster.params.Line) {
+      THREE.Raycaster.params.Line.threshold = 15;
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
         if (e.key.toLowerCase() === 'z') {
@@ -185,7 +190,7 @@ function App() {
         window.ipcRenderer.off('redo-action', redoListener);
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   // Keyboard shortcut for Deleting nodes
@@ -216,7 +221,7 @@ function App() {
     };
     window.addEventListener('keydown', handleDelete);
     return () => window.removeEventListener('keydown', handleDelete);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [activeNodeId, nodes]); // include nodes for pushToHistory scope
 
   const [generateTrigger, setGenerateTrigger] = useState(0)
@@ -272,7 +277,7 @@ function App() {
         setGenerateTrigger(prev => prev + 1);
       }, 5000);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isOcctReady]);
 
   const handleGenerate = () => {
@@ -457,671 +462,69 @@ function App() {
         setGenerateTrigger(prev => prev + 1);
       }, 10);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [selectedSketchElements, activeTool]);
   // --------------------------------------------------------
 
   return (
     <div className="app-container">
       {/* ... */}
-      <div className="sidebar">
-        <h1>
-          <Box className="text-blue-400" size={28} />
-          TBM Manager
-        </h1>
+      <LeftSidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        showGrid={showGrid}
+        setShowGrid={setShowGrid}
+        showWCS={showWCS}
+        setShowWCS={setShowWCS}
+        showLCS={showLCS}
+        setShowLCS={setShowLCS}
+        fileInputRef={fileInputRef}
+        handleFileUpload={handleFileUpload}
+        renderMode={renderMode}
+        setRenderMode={setRenderMode}
+        activeNodeId={activeNodeId}
+        setActiveNodeId={setActiveNodeId}
+        activeTool={activeTool}
+        setActiveTool={setActiveTool}
+        setDraftingPlane={setDraftingPlane}
+        cadViewerRef={cadViewerRef}
+        nodes={nodes}
+        setNodes={setNodes}
+        pushToHistory={pushToHistory}
+        generateTrigger={generateTrigger}
+        setGenerateTrigger={setGenerateTrigger}
+        setOperations={setOperations}
+        activeNode={activeNode}
+        handleExport={handleExport}
+        isEditingSketch={isEditingSketch}
+        isOcctReady={isOcctReady}
+        preDraftingPlane={preDraftingPlane}
+        selectedFeature={selectedFeature}
+        setActiveConfig={setActiveConfig}
+        setIsEditingSketch={setIsEditingSketch}
+        setParamErrors={setParamErrors}
+        setPreDraftingPlane={setPreDraftingPlane}
+        setSelectedFeature={setSelectedFeature}
 
-        <div className="controls">
-          <div style={{ display: 'flex', marginBottom: '1rem', borderBottom: '1px solid #334155' }}>
-            <button
-              style={{ flex: 1, padding: '0.5rem', background: activeTab === 'part' ? '#1e293b' : 'transparent', color: activeTab === 'part' ? '#60a5fa' : '#94a3b8', border: 'none', borderBottom: activeTab === 'part' ? '2px solid #60a5fa' : 'none', cursor: 'pointer' }}
-              onClick={() => setActiveTab('part')}
-            >Part Design</button>
-            <button
-              style={{ flex: 1, padding: '0.5rem', background: activeTab === 'sketch' ? '#1e293b' : 'transparent', color: activeTab === 'sketch' ? '#60a5fa' : '#94a3b8', border: 'none', borderBottom: activeTab === 'sketch' ? '2px solid #60a5fa' : 'none', cursor: 'pointer' }}
-              onClick={() => setActiveTab('sketch')}
-            >Sketcher</button>
-          </div>
-
-          <div className="control-group" style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', margin: '0.5rem 0' }}>
-              <input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} />
-              <span>Show Setup Grid</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', margin: '0.5rem 0' }}>
-              <input type="checkbox" checked={showWCS} onChange={e => setShowWCS(e.target.checked)} />
-              <span>Show WCS Origin</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '0.5rem', margin: '0.5rem 0' }}>
-              <input type="checkbox" checked={showLCS} onChange={e => setShowLCS(e.target.checked)} />
-              <span>Show LCS Origin</span>
-            </label>
-          </div>
-
-          <div className="control-group">
-            <input
-              type="file"
-              accept=".step,.stp,.iges,.igs,.brep,.stl"
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              onChange={handleFileUpload}
-            />
-            <label>Render View</label>
-            <div className="shape-selectors">
-              <button
-                className={`shape-btn ${renderMode === 'mesh' ? 'active' : ''}`}
-                onClick={() => setRenderMode('mesh')}
-              >
-                Faces
-              </button>
-              <button
-                className={`shape-btn ${renderMode === 'brep' ? 'active' : ''}`}
-                onClick={() => setRenderMode('brep')}
-              >
-                Edges
-              </button>
-            </div>
-          </div>
-
-          {activeTab === 'part' && (
-            <>
-              <div className="control-group">
-                <button
-                  className="btn primary-btn"
-                  style={{ width: '100%', marginBottom: '1rem', background: '#0ea5e9', borderColor: '#0ea5e9' }}
-                  onClick={() => {
-                    const newPartId = 'part-' + Date.now();
-                    const newSketchId = 'sketch-' + Date.now();
-                    setNodes(prev => [
-                      ...prev,
-                      {
-                        id: newPartId,
-                        name: `Body ${prev.filter(n => n.type === 'part').length + 1}`,
-                        type: 'part',
-                        params: {},
-                        transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-                        operations: [],
-                        visible: true
-                      },
-                      {
-                        id: newSketchId,
-                        name: `Sketch 1`,
-                        type: 'sketch',
-                        parentId: newPartId,
-                        params: { lines: [], points: [], constraints: [] },
-                        transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-                        operations: [],
-                        visible: true
-                      }
-                    ]);
-                    setActiveNodeId(newSketchId);
-                    setActiveTab('sketch');
-                    setActiveTool('sketch_plane');
-                    setDraftingPlane(null); // Clear active plane explicitly
-                    cadViewerRef.current?.clearSketch();
-                    cadViewerRef.current?.setIsoView(); // Show grid in 3D initially so they can pick a plane face
-                  }}
-                >
-                  <PenTool size={16} style={{ marginRight: '8px', display: 'inline' }} /> Create Body & Sketch
-                </button>
-                <label>Shape Type</label>
-                <div className="shape-selectors">
-                  <button
-                    className={`shape-btn ${shapeType === 'box' ? 'active' : ''}`}
-                    onClick={() => setShapeType('box')}
-                  >
-                    <Box size={20} /> Box
-                  </button>
-                  <button
-                    className={`shape-btn ${shapeType === 'cylinder' ? 'active' : ''}`}
-                    onClick={() => setShapeType('cylinder')}
-                  >
-                    <CylinderIcon size={20} /> Cylinder
-                  </button>
-                  <button
-                    className={`shape-btn ${shapeType === 'sphere' ? 'active' : ''}`}
-                    onClick={() => setShapeType('sphere')}
-                  >
-                    <Circle size={20} /> Sphere
-                  </button>
-                  <button
-                    className={`shape-btn ${shapeType === 'lcs_plane' ? 'active' : ''}`}
-                    onClick={() => setShapeType('lcs_plane')}
-                  >
-                    <Focus size={20} /> LCS Widget
-                  </button>
-                </div>
-              </div>
-
-              <div className="control-group">
-                <label>Transform & Inspect</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                  <button
-                    className={`shape-btn ${activeTool === 'select' ? 'active' : ''}`}
-                    onClick={() => setActiveTool('select')}
-                  >
-                    <MousePointer2 size={16} /> Select
-                  </button>
-                  <button
-                    className={`shape-btn ${activeTool === 'measure' ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveTool(activeTool === 'measure' ? 'select' : 'measure');
-                      setSelectedFeature(null);
-                    }}
-                  >
-                    <Ruler size={16} /> Measure
-                  </button>
-                  <button
-                    className={`shape-btn ${activeTool === 'transform_translate' ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveTool(activeTool === 'transform_translate' ? 'select' : 'transform_translate');
-                      setSelectedFeature(null);
-                    }}
-                  >
-                    <Activity size={16} /> Translate
-                  </button>
-                  <button
-                    className={`shape-btn ${activeTool === 'transform_rotate' ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveTool(activeTool === 'transform_rotate' ? 'select' : 'transform_rotate');
-                      setSelectedFeature(null);
-                    }}
-                  >
-                    <Circle size={16} /> Rotate
-                  </button>
-                  <button
-                    className={`shape-btn ${activeTool === 'transform_scale' ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveTool(activeTool === 'transform_scale' ? 'select' : 'transform_scale');
-                      setSelectedFeature(null);
-                    }}
-                  >
-                    <Box size={16} /> Scale
-                  </button>
-                </div>
-              </div>
-
-              <div className="control-group">
-                <label>Generate Profile from Selected Sketch</label>
-                <div className="shape-selectors">
-                  <button
-                    className={`shape-btn ${activeNode.type === 'extrude' ? 'active' : ''}`}
-                    onClick={() => {
-                      if (activeNode.type !== 'sketch') {
-                        alert("Please select a Sketch in the Project Tree to extrude.");
-                        return;
-                      }
-                      const lines = (activeNode.params as any)?.lines;
-                      if (!lines || (lines as any[]).length < 3) {
-                        alert("The selected sketch must have at least 3 lines.");
-                        return;
-                      }
-                      const newNodeId = 'extrude-' + Date.now();
-                      pushToHistory();
-                      setNodes((prev: SceneNode[]) => [
-                        ...prev,
-                        {
-                          id: newNodeId,
-                          name: `Extrusion`,
-                          type: 'extrude',
-                          parentId: activeNode.parentId,
-                          params: { lines, plane: activeNode.params.plane || 'xy', depth: 10, constraints: [], sourceSketchId: activeNode.id },
-                          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-                          operations: [],
-                          visible: true
-                        }
-                      ]);
-                      setActiveNodeId(newNodeId);
-                      setActiveTool('select');
-                      setGenerateTrigger(prev => prev + 1);
-                      cadViewerRef.current?.clearSketch();
-                      setDraftingPlane(null);
-                    }}
-                  >
-                    <CylinderIcon size={16} /> Extrude
-                  </button>
-                  <button
-                    className={`shape-btn ${activeNode.type === 'revolve' ? 'active' : ''}`}
-                    onClick={() => {
-                      if (activeNode.type !== 'sketch') {
-                        alert("Please select a Sketch in the Project Tree to revolve.");
-                        return;
-                      }
-                      const lines = (activeNode.params as any)?.lines;
-                      if (!lines || (lines as any[]).length < 3) {
-                        alert("The selected sketch must have at least 3 lines.");
-                        return;
-                      }
-                      const newNodeId = 'revolve-' + Date.now();
-                      pushToHistory();
-                      setNodes((prev: SceneNode[]) => [
-                        ...prev,
-                        {
-                          id: newNodeId,
-                          name: `Revolution`,
-                          type: 'revolve',
-                          parentId: activeNode.parentId,
-                          params: { lines, plane: activeNode.params.plane || 'xy', constraints: [], sourceSketchId: activeNode.id },
-                          transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-                          operations: [],
-                          visible: true
-                        }
-                      ]);
-                      setActiveNodeId(newNodeId);
-                      setActiveTool('select');
-                      setGenerateTrigger(prev => prev + 1);
-                      cadViewerRef.current?.clearSketch();
-                      setDraftingPlane(null);
-                    }}
-                  >
-                    <Circle size={16} /> Revolve
-                  </button>
-                </div>
-              </div>
-
-              <div className="control-group">
-                <label>Boolean Operations</label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', padding: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '10px', color: '#94a3b8' }}>Tool Object (to cut/fuse with)</label>
-                    <select
-                      className="property-input"
-                      style={{ width: '100%' }}
-                      id="boolean-tool-selector"
-                      defaultValue=""
-                    >
-                      <option value="" disabled>Select Tool Part...</option>
-                      {nodes.filter(n => n.id !== activeNode.id && n.type !== 'sketch' && n.type !== 'none' && n.type !== 'part').map(n => (
-                        <option key={`bool-opt-${n.id}`} value={n.id}>{n.name || n.type}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
-                    <button
-                      className="shape-btn"
-                      onClick={() => {
-                        const toolEl = document.getElementById('boolean-tool-selector') as HTMLSelectElement;
-                        const toolId = toolEl?.value;
-                        if (!toolId) { alert("Please select a Tool object first."); return; }
-                        if (activeNode.type === 'sketch' || activeNode.type === 'none' || activeNode.type === 'part') { alert("Please select a valid 3D Target object."); return; }
-
-                        const newNodeId = `boolean-${Date.now()}`;
-                        setNodes((prev: SceneNode[]) => [
-                          ...prev.map(n => (n.id === activeNode.id || n.id === toolId) ? { ...n, visible: false } : n),
-                          {
-                            id: newNodeId,
-                            name: `Cut (${activeNode.type} - tool)`,
-                            type: 'boolean',
-                            parentId: activeNode.parentId,
-                            params: { operation: 'cut', targetId: activeNode.id, toolId },
-                            transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-                            operations: [],
-                            visible: true
-                          }
-                        ]);
-                        setActiveNodeId(newNodeId);
-                        setGenerateTrigger(prev => prev + 1);
-                      }}
-                    >
-                      Cut
-                    </button>
-                    <button
-                      className="shape-btn"
-                      onClick={() => {
-                        const toolEl = document.getElementById('boolean-tool-selector') as HTMLSelectElement;
-                        const toolId = toolEl?.value;
-                        if (!toolId) { alert("Please select a Tool object first."); return; }
-                        if (activeNode.type === 'sketch' || activeNode.type === 'none' || activeNode.type === 'part') { alert("Please select a valid 3D Target object."); return; }
-
-                        const newNodeId = `boolean-${Date.now()}`;
-                        setNodes((prev: SceneNode[]) => [
-                          ...prev.map(n => (n.id === activeNode.id || n.id === toolId) ? { ...n, visible: false } : n),
-                          {
-                            id: newNodeId,
-                            name: `Union`,
-                            type: 'boolean',
-                            parentId: activeNode.parentId,
-                            params: { operation: 'fuse', targetId: activeNode.id, toolId },
-                            transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-                            operations: [],
-                            visible: true
-                          }
-                        ]);
-                        setActiveNodeId(newNodeId);
-                        setGenerateTrigger(prev => prev + 1);
-                      }}
-                    >
-                      Union
-                    </button>
-                    <button
-                      className="shape-btn"
-                      onClick={() => {
-                        const toolEl = document.getElementById('boolean-tool-selector') as HTMLSelectElement;
-                        const toolId = toolEl?.value;
-                        if (!toolId) { alert("Please select a Tool object first."); return; }
-                        if (activeNode.type === 'sketch' || activeNode.type === 'none' || activeNode.type === 'part') { alert("Please select a valid 3D Target object."); return; }
-
-                        const newNodeId = `boolean-${Date.now()}`;
-                        setNodes((prev: SceneNode[]) => [
-                          ...prev.map(n => (n.id === activeNode.id || n.id === toolId) ? { ...n, visible: false } : n),
-                          {
-                            id: newNodeId,
-                            name: `Intersect`,
-                            type: 'boolean',
-                            parentId: activeNode.parentId,
-                            params: { operation: 'common', targetId: activeNode.id, toolId },
-                            transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
-                            operations: [],
-                            visible: true
-                          }
-                        ]);
-                        setActiveNodeId(newNodeId);
-                        setGenerateTrigger(prev => prev + 1);
-                      }}
-                    >
-                      Intersect
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {activeTab === 'sketch' && (
-            <>
-              <div className="control-group">
-                <label>Draw & Plane Tools</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-                  <button
-                    className={`shape-btn ${activeTool === 'select' ? 'active' : ''}`}
-                    onClick={() => setActiveTool('select')}
-                  >
-                    <MousePointer2 size={16} /> Select
-                  </button>
-                  <button
-                    className={`shape-btn ${activeTool === 'sketch_plane' ? 'active' : ''}`}
-                    onClick={() => {
-                      setActiveTool(activeTool === 'sketch_plane' ? 'select' : 'sketch_plane');
-                      setSelectedFeature(null);
-                      if (activeTool === 'sketch_plane') setPreDraftingPlane(null);
-                    }}
-                  >
-                    <GridIcon size={16} /> Set Plane
-                  </button>
-                  {activeTool === 'sketch_plane' && preDraftingPlane && !draftingPlane && (
-                    <button
-                      className="shape-btn"
-                      style={{ background: '#059669', color: 'white', borderColor: '#059669', gridColumn: 'span 2' }}
-                      onClick={() => {
-                        setDraftingPlane(preDraftingPlane);
-                        setActiveTool('sketch_line');
-                      }}
-                    >
-                      Accept Plane
-                    </button>
-                  )}
-                  <button
-                    className={`shape-btn ${activeTool === 'sketch_point' ? 'active' : ''}`}
-                    onClick={() => setActiveTool('sketch_point')}
-                    disabled={!draftingPlane}
-                    title={!draftingPlane ? "Select a drafting plane first" : ""}
-                  >
-                    <Focus size={16} /> Point
-                  </button>
-                  <button
-                    className={`shape-btn ${activeTool === 'sketch_line' ? 'active' : ''}`}
-                    onClick={() => setActiveTool('sketch_line')}
-                    disabled={!draftingPlane}
-                    title={!draftingPlane ? "Select a drafting plane first" : ""}
-                  >
-                    <Minus size={16} /> Line
-                  </button>
-                  <button
-                    className="shape-btn"
-                    style={{ background: 'rgba(15, 23, 42, 0.5)', gridColumn: 'span 2' }}
-                    onClick={() => {
-                      cadViewerRef.current?.closeSketch();
-                      setActiveTool('select');
-                    }}
-                    disabled={!draftingPlane}
-                    title={!draftingPlane ? "Select a drafting plane first" : "Connect the last line to the first point"}
-                  >
-                    <Activity size={16} /> Close Path
-                  </button>
-                </div>
-                {draftingPlane && (
-                  <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '4px 8px', borderRadius: '4px', textAlign: 'center' }}>
-                    Active Plane: {draftingPlane.toUpperCase()}
-                  </div>
-                )}
-              </div>
-
-              <div className="control-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <label style={{ margin: 0 }}>Constraints</label>
-                  {/* Auto-apply effect replaces the manual apply button */}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-
-                  {/* Geometric */}
-                  <button className={`shape-btn ${activeTool === 'constrain_coincident' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_coincident')} title="Coincident">
-                    <Focus size={16} /> Coinc
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_point_on_object' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_point_on_object')} title="Point On Object">
-                    <MousePointer2 size={16} /> PtOnObj
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_horizontal' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_horizontal')} title="Horizontal">
-                    <Minus size={16} /> Horiz
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_vertical' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_vertical')} title="Vertical">
-                    <AlignVerticalJustifyCenter size={16} /> Vert
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_parallel' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_parallel')} title="Parallel">
-                    <Layers size={16} /> Paral
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_perpendicular' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_perpendicular')} title="Perpendicular">
-                    <GridIcon size={16} /> Perp
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_tangent' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_tangent')} title="Tangent/Collinear">
-                    <Circle size={16} /> Tangnt
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_equal' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_equal')} title="Equal">
-                    <AlignHorizontalJustifyCenter size={16} /> Equal
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_symmetric' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_symmetric')} title="Symmetric">
-                    <Copy size={16} /> Symm
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_block' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_block')} title="Block / Fix">
-                    <Square size={16} /> Block
-                  </button>
-
-                  {/* Dimensional */}
-                  <button className={`shape-btn ${activeTool === 'constrain_distance' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_distance')} title="Distance">
-                    <Maximize2 size={16} /> Dist
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_horizontal_dist' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_horizontal_dist')} title="Horizontal Distance">
-                    <AlignHorizontalJustifyCenter size={16} /> HDist
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_vertical_dist' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_vertical_dist')} title="Vertical Distance">
-                    <AlignVerticalJustifyCenter size={16} /> VDist
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_radius_diameter' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_radius_diameter')} title="Radius/Diameter">
-                    <Circle size={16} /> Rad/Dia
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_angle' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_angle')} title="Angle">
-                    <Triangle size={16} /> Angle
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_lock' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_lock')} title="Lock Position">
-                    <Link size={16} /> Lock
-                  </button>
-
-                  {/* Toggles */}
-                  <button className={`shape-btn ${activeTool === 'constrain_toggle_driving' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_toggle_driving')} title="Toggle Reference/Driving" style={{ background: 'rgba(56, 189, 248, 0.05)' }}>
-                    <Type size={16} /> Ref
-                  </button>
-                  <button className={`shape-btn ${activeTool === 'constrain_toggle_active' ? 'active' : ''}`} onClick={() => setActiveTool('constrain_toggle_active')} title="Toggle Active/Deactive" style={{ background: 'rgba(56, 189, 248, 0.05)' }}>
-                    <Play size={16} /> Tgl
-                  </button>
-                </div>
-              </div>
-
-              {isEditingSketch && (
-                <div className="control-group">
-                  <label>Editing Profile</label>
-                  <div className="shape-selectors">
-                    <button
-                      className="shape-btn"
-                      style={{ background: '#059669', color: 'white', borderColor: '#059669' }}
-                      onClick={() => {
-                        const sketch = cadViewerRef.current?.getSketch();
-                        if (sketch && sketch.lines.length >= 3) {
-                          setActiveConfig((prev: SceneNode) => ({
-                            ...prev,
-                            params: { ...prev.params, lines: sketch.lines }
-                          }));
-                          setIsEditingSketch(false);
-                          setActiveTab('part');
-                          setActiveTool('select');
-                          setGenerateTrigger(prev => prev + 1);
-                          cadViewerRef.current?.clearSketch();
-                          setDraftingPlane(null);
-                        } else {
-                          alert("Please ensure the sketch has at least 3 lines before applying.");
-                        }
-                      }}
-                    >
-                      Accept Details & Finish
-                    </button>
-                    <button
-                      className="shape-btn"
-                      onClick={() => {
-                        setIsEditingSketch(false);
-                        setActiveTab('part');
-                        setActiveTool('select');
-                        cadViewerRef.current?.clearSketch();
-                        setDraftingPlane(null);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-          <div className="parameters-container">
-            {shapeType === 'box' && (
-              <>
-                <div className="input-group">
-                  <label>Width {paramErrors.width && <span className="error-text">({paramErrors.width})</span>}</label>
-                  <input type="text" value={widthExpr} onChange={(e) => { setWidthExpr(e.target.value); setParamErrors(prev => ({ ...prev, width: '' })) }} onBlur={handleGenerate} onKeyDown={(e) => e.key === 'Enter' && handleGenerate()} placeholder="e.g. 50 or sqrt(2500)" />
-                </div>
-                <div className="input-group">
-                  <label>Height {paramErrors.height && <span className="error-text">({paramErrors.height})</span>}</label>
-                  <input type="text" value={heightExpr} onChange={(e) => { setHeightExpr(e.target.value); setParamErrors(prev => ({ ...prev, height: '' })) }} onBlur={handleGenerate} onKeyDown={(e) => e.key === 'Enter' && handleGenerate()} placeholder="e.g. 50 or cos(0)*50" />
-                </div>
-                <div className="input-group">
-                  <label>Depth {paramErrors.depth && <span className="error-text">({paramErrors.depth})</span>}</label>
-                  <input type="text" value={depthExpr} onChange={(e) => { setDepthExpr(e.target.value); setParamErrors(prev => ({ ...prev, depth: '' })) }} onBlur={handleGenerate} onKeyDown={(e) => e.key === 'Enter' && handleGenerate()} placeholder="e.g. 50" />
-                </div>
-              </>
-            )}
-            {shapeType === 'cylinder' && (
-              <>
-                <div className="input-group">
-                  <label>Radius {paramErrors.radius && <span className="error-text">({paramErrors.radius})</span>}</label>
-                  <input type="text" value={radiusExpr} onChange={(e) => { setRadiusExpr(e.target.value); setParamErrors(prev => ({ ...prev, radius: '' })) }} onBlur={handleGenerate} onKeyDown={(e) => e.key === 'Enter' && handleGenerate()} placeholder="e.g. 25" />
-                </div>
-                <div className="input-group">
-                  <label>Height {paramErrors.height && <span className="error-text">({paramErrors.height})</span>}</label>
-                  <input type="text" value={heightExpr} onChange={(e) => { setHeightExpr(e.target.value); setParamErrors(prev => ({ ...prev, height: '' })) }} onBlur={handleGenerate} onKeyDown={(e) => e.key === 'Enter' && handleGenerate()} placeholder="e.g. 50" />
-                </div>
-              </>
-            )}
-            {shapeType === 'sphere' && (
-              <div className="input-group">
-                <label>Radius {paramErrors.radius && <span className="error-text">({paramErrors.radius})</span>}</label>
-                <input type="text" value={radiusExpr} onChange={(e) => { setRadiusExpr(e.target.value); setParamErrors(prev => ({ ...prev, radius: '' })) }} onBlur={handleGenerate} onKeyDown={(e) => e.key === 'Enter' && handleGenerate()} placeholder="e.g. 25" />
-              </div>
-            )}
-            {['step', 'iges', 'brep', 'stl'].includes(shapeType) && (
-              <div className="input-group" style={{ textAlign: 'center', color: '#94a3b8', padding: '1rem 0' }}>
-                Rendering imported {shapeType.toUpperCase()} file data.
-              </div>
-            )}
-            {shapeType === 'extrude' && (
-              <div className="input-group">
-                <label>Extrusion Depth {paramErrors.depth && <span className="error-text">({paramErrors.depth})</span>}</label>
-                <input type="text" value={depthExpr} onChange={(e) => { setDepthExpr(e.target.value); setParamErrors(prev => ({ ...prev, depth: '' })) }} onBlur={handleGenerate} onKeyDown={(e) => e.key === 'Enter' && handleGenerate()} placeholder="e.g. 50" />
-              </div>
-            )}
-          </div>
-
-          <div className="actions">
-            <button
-              className="btn primary-btn"
-              onClick={handleGenerate}
-              disabled={!isOcctReady}
-            >
-              <Play size={18} />
-              Generate Base Geometry
-            </button>
-            <button
-              className="btn outline-btn"
-              onClick={handleExport}
-              disabled={!isOcctReady}
-            >
-              <Download size={18} />
-              Export to STL
-            </button>
-          </div>
-
-          {selectedFeature && (
-            <div className="feature-panel" style={{ marginTop: '1.5rem' }}>
-              <h3 style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Feature Operations</h3>
-              <div style={{ background: '#1e293b', padding: '1rem', borderRadius: '0.5rem', border: '1px solid #334155' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <span style={{ color: '#cbd5e1' }}>Selected Target:</span>
-                  <span style={{ color: '#facc15', fontWeight: 'bold', background: '#422006', padding: '0.2rem 0.5rem', borderRadius: '0.25rem' }}>
-                    {selectedFeature.type.toUpperCase()} #{selectedFeature.index}
-                  </span>
-                </div>
-                {selectedFeature.type === 'edge' && (
-                  <div style={{ marginTop: '0.5rem' }}>
-                    <div className="input-group" style={{ marginBottom: '0.5rem' }}>
-                      <label>Fillet Radius</label>
-                      <input
-                        type="number"
-                        value={filletRadius}
-                        onChange={(e) => setFilletRadius(e.target.value)}
-                        min="0.1"
-                        step="0.5"
-                      />
-                    </div>
-                    <button
-                      className="btn primary-btn" style={{ width: '100%', marginBottom: '0.5rem', padding: '0.5rem' }}
-                      onClick={() => {
-                        const radius = parseFloat(filletRadius.toString()); // Ensure it's a number
-                        if (!isNaN(radius) && selectedFeature?.type === 'edge') {
-                          setOperations((prev: CadOperation[]) => [...prev, { type: 'fillet', edgeIndex: selectedFeature.index, radius }]);
-                          setGenerateTrigger(p => p + 1);
-                        }
-                      }}
-                    >
-                      Apply Fillet
-                    </button>
-                  </div>
-                )}
-                <button
-                  className="btn outline-btn" style={{ width: '100%', padding: '0.5rem' }}
-                  onClick={() => setSelectedFeature(null)}
-                >
-                  Clear Selection
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div >
+        shapeType={shapeType}
+        setShapeType={setShapeType}
+        widthExpr={widthExpr}
+        setWidthExpr={setWidthExpr}
+        heightExpr={heightExpr}
+        setHeightExpr={setHeightExpr}
+        depthExpr={depthExpr}
+        setDepthExpr={setDepthExpr}
+        radiusExpr={radiusExpr}
+        setRadiusExpr={setRadiusExpr}
+        paramErrors={paramErrors}
+        handleGenerate={handleGenerate}
+        selectedSketchElements={selectedSketchElements}
+        filletRadius={filletRadius}
+        setFilletRadius={setFilletRadius}
+        draftingPlane={draftingPlane}
+        activeViewTab={activeViewTab}
+        setActiveViewTab={setActiveViewTab}
+      />
 
       <div className="main-content" style={{ display: 'flex', flexDirection: 'column' }}>
         <div className="tabs-bar" style={{ display: 'flex', background: '#0f172a', borderBottom: '1px solid #1e293b', zIndex: 10 }}>
@@ -1185,7 +588,7 @@ function App() {
                 }
               }}
               // Map origin controls to the parent Part if applicable, otherwise self.
-              originTransform={nodes.find(n => n.id === activeConfig.parentId)?.transform || activeConfig.transform}
+              originTransform={nodes.find(n => n.id === activeConfig.parentId)?.transform || nodes.find(n => n.id === activeConfig.id)?.transform || { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }}
               onOriginTransformStart={() => pushToHistory()}
               onOriginTransformChange={(t) => {
                 const targetId = activeConfig.parentId || activeConfig.id;
@@ -1512,6 +915,50 @@ function App() {
                         onKeyDown={(e) => e.key === 'Enter' && setGenerateTrigger(prev => prev + 1)}
                       />
                     </div>
+                    <div className="prop-row">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label>Pos X</label>
+                        <input type="number" step="1" value={nodes.find(n => n.id === (activeConfig.parentId || activeConfig.id))?.transform?.position?.[0] || 0} onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const targetId = activeConfig.parentId || activeConfig.id;
+                          setNodes(prev => {
+                            const idx = prev.findIndex(n => n.id === targetId);
+                            if (idx === -1) return prev;
+                            const newNodes = [...prev];
+                            newNodes[idx] = { ...newNodes[idx], transform: { ...newNodes[idx].transform, position: [val, newNodes[idx].transform.position[1], newNodes[idx].transform.position[2]] } };
+                            return newNodes;
+                          });
+                        }} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label>Pos Y</label>
+                        <input type="number" step="1" value={nodes.find(n => n.id === (activeConfig.parentId || activeConfig.id))?.transform?.position?.[1] || 0} onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const targetId = activeConfig.parentId || activeConfig.id;
+                          setNodes(prev => {
+                            const idx = prev.findIndex(n => n.id === targetId);
+                            if (idx === -1) return prev;
+                            const newNodes = [...prev];
+                            newNodes[idx] = { ...newNodes[idx], transform: { ...newNodes[idx].transform, position: [newNodes[idx].transform.position[0], val, newNodes[idx].transform.position[2]] } };
+                            return newNodes;
+                          });
+                        }} />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <label>Pos Z</label>
+                        <input type="number" step="1" value={nodes.find(n => n.id === (activeConfig.parentId || activeConfig.id))?.transform?.position?.[2] || 0} onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const targetId = activeConfig.parentId || activeConfig.id;
+                          setNodes(prev => {
+                            const idx = prev.findIndex(n => n.id === targetId);
+                            if (idx === -1) return prev;
+                            const newNodes = [...prev];
+                            newNodes[idx] = { ...newNodes[idx], transform: { ...newNodes[idx].transform, position: [newNodes[idx].transform.position[0], newNodes[idx].transform.position[1], val] } };
+                            return newNodes;
+                          });
+                        }} />
+                      </div>
+                    </div>
                   </div>
                 ) : activeNode.type === 'sketch' ? (
                   <div style={{ padding: '12px' }}>
@@ -1604,11 +1051,18 @@ function App() {
                         <div className="input-group" style={{ marginTop: '0.5rem' }}>
                           <label>Axis of Revolution</label>
                           <button
+                            className={`btn outline-btn ${activeTool === 'edit_revolve_axis' ? 'active' : ''}`}
+                            style={{ width: '100%', marginBottom: '6px', padding: '0.4rem', borderColor: activeTool === 'edit_revolve_axis' ? '#f59e0b' : '#10b981', color: activeTool === 'edit_revolve_axis' ? '#f59e0b' : '#10b981' }}
+                            onClick={() => setActiveTool(activeTool === 'edit_revolve_axis' ? 'select' : 'edit_revolve_axis')}
+                          >
+                            Edit Revolve Axis
+                          </button>
+                          <button
                             className={`btn outline-btn ${activeTool === 'select_sweep_path' ? 'active' : ''}`}
                             style={{ width: '100%', padding: '0.4rem', borderColor: activeTool === 'select_sweep_path' ? '#f59e0b' : '#38bdf8', color: activeTool === 'select_sweep_path' ? '#f59e0b' : '#38bdf8' }}
                             onClick={() => setActiveTool(activeTool === 'select_sweep_path' ? 'select' : 'select_sweep_path')}
                           >
-                            {activeTool === 'select_sweep_path' ? 'Select 3D Edge/Line...' : ((activeNode.params as any).sweepVector ? 'Change Custom Axis' : 'Set Custom Axis')}
+                            {activeTool === 'select_sweep_path' ? 'Select 3D Edge/Line...' : ((activeNode.params as any).sweepVector ? 'Change Custom Axis' : 'Set Custom Axis (3D Edge)')}
                           </button>
                           {(activeNode.params as any).sweepVector && (
                             <div style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '4px' }}>

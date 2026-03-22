@@ -32,6 +32,19 @@ export default function SettingsPanel() {
 
                 <div className="setting-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <div>
+                        <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem' }}>Enable Gizmo Scaling</label>
+                        <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Show 3D scale handles on the transform gizmo</span>
+                    </div>
+                    <input
+                        type="checkbox"
+                        style={{ transform: 'scale(1.2)', accentColor: '#38bdf8' }}
+                        checked={settings.enableGizmoScaling}
+                        onChange={(e) => updateSettings({ enableGizmoScaling: e.target.checked })}
+                    />
+                </div>
+
+                <div className="setting-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <div>
                         <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.25rem' }}>LCS Base Size</label>
                         <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Base scale modifier for Local Coordinate System widgets</span>
                     </div>

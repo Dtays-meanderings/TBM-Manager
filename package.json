@@ -6,7 +6,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host",
     "build": "tsc && vite build && electron-builder",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
@@ -17,6 +17,7 @@
     "@salusoft89/planegcs": "^1.1.7",
     "@types/three": "^0.183.1",
     "jsdom": "^28.1.0",
+    "lodash.throttle": "^4.1.1",
     "lucide-react": "^0.575.0",
     "mathjs": "^15.1.1",
     "opencascade.js": "^1.1.1",
@@ -26,6 +27,8 @@
     "three-stdlib": "^2.36.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/lodash.throttle": "^4.1.9",
     "@types/node": "^25.3.3",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",

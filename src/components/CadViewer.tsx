@@ -1,14 +1,15 @@
+import { ActiveTool, ShapeType } from '../types';
 import { useEffect, useState, useRef, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, Grid, Html, Line, TransformControls, PivotControls } from '@react-three/drei';
+import { OrbitControls, Grid, Html, Line, PivotControls } from '@react-three/drei';
 import { STLExporter } from 'three-stdlib';
 import * as THREE from 'three';
-import { ActiveTool } from '../App';
 import { SolverService } from '../SolverService';
 import LCSPlane from './LCSPlane';
 import { initOpenCascade } from 'opencascade.js';
 import wasmUrl from 'opencascade.js/dist/opencascade.wasm.wasm?url';
 import { useSettings } from '../contexts/SettingsContext';
+import { resolvePrimitives, resolveImport, resolveExtrude, resolveRevolve, resolveBoolean, resolveOperations, resolveTransform } from '../utils/CADGenerators';
 
 export interface CadViewerRef {
     exportToSTL: (filename: string) => Promise<boolean>;
@@ -46,6 +47,7 @@ export interface CadViewerProps {
     preDraftingPlane?: 'xy' | 'xz' | 'yz' | null;
     onHoverDraftingPlane?: (plane: 'xy' | 'xz' | 'yz' | null) => void;
     onSelectDraftingPlane?: (plane: 'xy' | 'xz' | 'yz' | null) => void;
+    alignTrigger?: number;
     originTransform?: { position: [number, number, number], rotation: [number, number, number], scale: [number, number, number] };
     onOriginTransformStart?: () => void;
     onOriginTransformChange?: (transform: { position: [number, number, number], rotation: [number, number, number], scale: [number, number, number] }) => void;
@@ -62,7 +64,7 @@ export interface CadViewerProps {
         lines: { start: THREE.Vector3, end: THREE.Vector3 }[],
         transform?: { position: [number, number, number], rotation: [number, number, number], scale: [number, number, number] }
     }[];
-    onUpdateNodeParam?: (nodeId: string, paramName: string, value: number) => void;
+    onUpdateNodeParam?: (nodeId: string, paramName: string, value: any) => void;
     onSelectSweepVector?: (vector: [number, number, number], isPreview?: boolean) => void;
 }
 
@@ -443,11 +445,10 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
     const [hudFocusedPosition, setHudFocusedPosition] = useState<THREE.Vector3 | null>(null);
     const [isoViewTrigger, setIsoViewTrigger] = useState<number>(0);
     const trihedronGroupRef = useRef<THREE.Group>(null);
-    const [sweepDraggerObj, setSweepDraggerObj] = useState<THREE.Group | null>(null);
     const [sweepDraggerOrigin, setSweepDraggerOrigin] = useState<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
     const [gizmoPivotOffset, setGizmoPivotOffset] = useState<THREE.Vector3>(new THREE.Vector3(0, 0, 0));
     const [gizmoPivotRotationOffset, setGizmoPivotRotationOffset] = useState<THREE.Euler>(new THREE.Euler(0, 0, 0));
-    const pivotMatrix = useMemo(() => new THREE.Matrix4(), []);
+    const [pivotMatrix, setPivotMatrix] = useState<THREE.Matrix4>(new THREE.Matrix4());
     const isDraggingPivot = useRef(false);
     const initialOrigin = useRef<{ position: [number, number, number], rotation: [number, number, number], scale: [number, number, number] } | null>(null);
     const pivotRef = useRef<any>(null); // For Drei PivotControls
@@ -461,16 +462,24 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
             const qOffset = new THREE.Quaternion().setFromEuler(gizmoPivotRotationOffset);
             const qGizmo = qObj.clone().multiply(qOffset);
 
-            pivotMatrix.compose(
-                new THREE.Vector3(...originTransform.position).add(gizmoPivotOffset),
+            // Compute world offset from the local gizmo offset and the object's origin transform
+            const worldOffset = gizmoPivotOffset.clone()
+                .applyEuler(new THREE.Euler(...originTransform.rotation))
+                .multiply(new THREE.Vector3(...originTransform.scale));
+
+            const newMatrix = new THREE.Matrix4().compose(
+                new THREE.Vector3(...originTransform.position).add(worldOffset),
                 qGizmo,
                 new THREE.Vector3(...originTransform.scale)
             );
+
+            setPivotMatrix(newMatrix);
+
             if (pivotRef.current) {
-                pivotRef.current.matrix.copy(pivotMatrix);
+                pivotRef.current.matrix.copy(newMatrix);
             }
         }
-    }, [originTransform, gizmoPivotOffset, gizmoPivotRotationOffset, pivotMatrix]);
+    }, [originTransform, gizmoPivotOffset, gizmoPivotRotationOffset]);
 
     // Refs for input focus cycling
     const lengthInputRef = useRef<HTMLInputElement>(null);
@@ -832,7 +841,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
         };
 
         loadOCCT();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, []); // REMOVED onReady from deps to prevent double-init
     useEffect(() => {
         console.log("CADVIEWER EFFECT TRACKER", { oc: !!oc, generateTrigger, activeNodeId, renderMode, nodesLength: nodes?.length });
@@ -854,311 +863,22 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                 let currentShape = null;
                 const { type, params, fileData: nodeFileData } = node;
 
-                if (type === 'box') {
-                    const makeBox = new ocAny.BRepPrimAPI_MakeBox_1((params as any).width, (params as any).height, (params as any).depth);
-                    currentShape = makeBox.Shape();
-                    makeBox.delete();
-                } else if (type === 'cylinder') {
-                    const makeCyl = new ocAny.BRepPrimAPI_MakeCylinder_1((params as any).radius, (params as any).height);
-                    currentShape = makeCyl.Shape();
-                    makeCyl.delete();
-                } else if (type === 'sphere') {
-                    const makeSph = new ocAny.BRepPrimAPI_MakeSphere_1((params as any).radius);
-                    currentShape = makeSph.Shape();
-                    makeSph.delete();
+                if (['box', 'cylinder', 'sphere'].includes(type as string)) {
+                    currentShape = resolvePrimitives(ocAny, type as string, params);
                 } else if (['step', 'iges', 'brep', 'stl'].includes(type as string) && nodeFileData) {
-                    const filename = `uploaded_node_${node.id}.${type} `;
-                    ocAny.FS.createDataFile("/", filename, nodeFileData, true, true);
-                    let readResult;
-                    if (type === 'step') {
-                        const reader = new ocAny.STEPControl_Reader_1();
-                        readResult = reader.ReadFile(filename);
-                        if (readResult === ocAny.IFSelect_ReturnStatus.IFSelect_RetDone) {
-                            reader.TransferRoots();
-                            currentShape = reader.OneShape();
-                        }
-                        reader.delete();
-                    } else if (type === 'iges') {
-                        const reader = new ocAny.IGESControl_Reader_1();
-                        readResult = reader.ReadFile(filename);
-                        if (readResult === ocAny.IFSelect_ReturnStatus.IFSelect_RetDone) {
-                            reader.TransferRoots();
-                            currentShape = reader.OneShape();
-                        }
-                        reader.delete();
-                    } else if (type === 'brep') {
-                        const builder = new ocAny.BRep_Builder();
-                        currentShape = new ocAny.TopoDS_Shape();
-                        readResult = ocAny.BRepTools.Read_2(currentShape, filename, builder);
-                        builder.delete();
-                    } else if (type === 'stl') {
-                        const reader = new ocAny.StlAPI_Reader_1();
-                        currentShape = new ocAny.TopoDS_Shape();
-                        readResult = reader.Read(currentShape, filename);
-                        reader.delete();
-                    }
-                    ocAny.FS.unlink(`/ ${filename} `);
-                    if (!currentShape || currentShape.IsNull() || (!readResult && readResult !== ocAny.IFSelect_ReturnStatus?.IFSelect_RetDone)) {
-                        currentShape = null;
-                    }
-                } else if (type === 'extrude' && (params as any).sourceSketchId) {
-                    const sourceSketch = nodes.find(n => n.id === (params as any).sourceSketchId);
-                    const pLines = (sourceSketch?.params as any)?.lines;
-                    if (!sourceSketch) {
-                        console.error(`Error: Source sketch ${(params as any).sourceSketchId} not found in nodes array.`);
-                    } else if (!pLines || pLines.length === 0) {
-                        console.warn(`Extrude: pLines is empty for sourceSketchId: ${(params as any).sourceSketchId} `);
-                    } else {
-                        const { plane } = params as any;
-                        let depth = (params as any).depth;
-                        depth = (typeof depth === 'number' && !isNaN(depth)) ? depth : 50;
-                        // Avoid zero-depth which breaks BRepPrimitiveAPI
-                        if (Math.abs(depth) < 0.001) depth = 0.001;
-                        const sortedLines = [];
-                        const remaining = [...pLines];
-                        sortedLines.push(remaining.shift());
-                        const dist = (p1: { x: number, y: number, z: number }, p2: { x: number, y: number, z: number }) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2) + Math.pow(p1.z - p2.z, 2));
-                        while (remaining.length > 0) {
-                            const lastPt = sortedLines[sortedLines.length - 1].end;
-                            const nextIdx = remaining.findIndex((l: { start: { x: number, y: number, z: number }, end: { x: number, y: number, z: number } }) => dist(l.start, lastPt) < 1e-4 || dist(l.end, lastPt) < 1e-4);
-                            if (nextIdx !== -1) {
-                                const nextLine = remaining.splice(nextIdx, 1)[0];
-                                if (dist(nextLine.end, lastPt) < 1e-4) sortedLines.push({ start: nextLine.end, end: nextLine.start });
-                                else sortedLines.push(nextLine);
-                            } else {
-                                sortedLines.push(remaining.shift());
-                            }
-                        }
-                        try {
-                            const makePoly = new ocAny.BRepBuilderAPI_MakePolygon_1();
-                            const vertices = [sortedLines[0].start];
-                            for (let i = 0; i < sortedLines.length; i++) {
-                                vertices.push(sortedLines[i].end);
-                            }
-                            if (dist(vertices[0], vertices[vertices.length - 1]) < 1e-4) {
-                                vertices.pop();
-                            }
-                            vertices.forEach(v => {
-                                const p = new ocAny.gp_Pnt_1();
-                                p.SetCoord_2(v.x, v.y, v.z);
-                                makePoly.Add_1(p);
-                                p.delete();
-                            });
-                            makePoly.Close();
-
-                            if (!makePoly.IsDone()) {
-                                console.error("Extrude: MakePolygon failed. Vertices: " + vertices.map(v => `(${v.x.toFixed(2)}, ${v.y.toFixed(2)})`).join("|"));
-                            }
-
-                            const wire = makePoly.Wire();
-                            const faceB = new ocAny.BRepBuilderAPI_MakeFace_15(wire, false);
-
-                            if (!faceB.IsDone()) {
-                                console.error("Extrude: MakeFace failed (wire might self-intersect or not be properly closed).");
-                            } else {
-                                const face = faceB.Face();
-                                let mx = 0, my = 0, mz = depth;
-                                if ((params as any).sweepVector) {
-                                    const sv = (params as any).sweepVector;
-                                    const len = Math.sqrt(sv[0] * sv[0] + sv[1] * sv[1] + sv[2] * sv[2]);
-                                    if (len > 0) {
-                                        mx = (sv[0] / len) * depth;
-                                        my = (sv[1] / len) * depth;
-                                        mz = (sv[2] / len) * depth;
-                                    }
-                                } else {
-                                    if (plane === 'xz') { mx = 0; my = -depth; mz = 0; }
-                                    else if (plane === 'yz') { mx = depth; my = 0; mz = 0; }
-                                }
-                                const vec = new ocAny.gp_Vec_4(mx, my, mz);
-                                const prism = new ocAny.BRepPrimAPI_MakePrism_1(face, vec, false, true);
-                                if (!prism.IsDone()) {
-                                    console.error("Extrude: MakePrism failed");
-                                } else {
-                                    currentShape = prism.Shape();
-                                }
-                                prism.delete(); vec.delete(); face.delete();
-                            }
-
-                            faceB.delete(); wire.delete(); makePoly.delete();
-                        } catch (err: unknown) {
-                            console.error(`Extrude WASM CRASH: ${err instanceof Error ? err.message : String(err)} `);
-                        }
-                    }
-                } else if (type === 'revolve' && (params as any).sourceSketchId) {
-                    const sourceSketch = nodes.find(n => n.id === (params as any).sourceSketchId);
-                    const pLines = (sourceSketch?.params as any)?.lines;
-                    if (pLines && pLines.length > 0) {
-                        const { plane } = params as any;
-                        const sortedLines = [];
-                        const remaining = [...pLines];
-                        sortedLines.push(remaining.shift());
-                        const dist = (p1: { x: number, y: number, z: number }, p2: { x: number, y: number, z: number }) => Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2) + Math.pow(p1.z - p2.z, 2));
-                        while (remaining.length > 0) {
-                            const lastPt = sortedLines[sortedLines.length - 1].end;
-                            const nextIdx = remaining.findIndex((l: { start: { x: number, y: number, z: number }, end: { x: number, y: number, z: number } }) => dist(l.start, lastPt) < 1e-4 || dist(l.end, lastPt) < 1e-4);
-                            if (nextIdx !== -1) {
-                                const nextLine = remaining.splice(nextIdx, 1)[0];
-                                if (dist(nextLine.end, lastPt) < 1e-4) sortedLines.push({ start: nextLine.end, end: nextLine.start });
-                                else sortedLines.push(nextLine);
-                            } else {
-                                sortedLines.push(remaining.shift());
-                            }
-                        }
-                        try {
-                            const makePoly = new ocAny.BRepBuilderAPI_MakePolygon_1();
-                            const vertices = [sortedLines[0].start];
-                            for (let i = 0; i < sortedLines.length; i++) {
-                                vertices.push(sortedLines[i].end);
-                            }
-                            if (dist(vertices[0], vertices[vertices.length - 1]) < 1e-4) {
-                                vertices.pop();
-                            }
-                            vertices.forEach(v => {
-                                const p = new ocAny.gp_Pnt_1();
-                                p.SetCoord_2(v.x, v.y, v.z);
-                                makePoly.Add_1(p);
-                                p.delete();
-                            });
-                            makePoly.Close();
-
-                            if (!makePoly.IsDone()) {
-                                console.error("Revolve: MakePolygon failed. Vertices: " + vertices.map(v => `(${v.x.toFixed(2)}, ${v.y.toFixed(2)})`).join("|"));
-                            }
-
-                            const wire = makePoly.Wire();
-                            const faceB = new ocAny.BRepBuilderAPI_MakeFace_15(wire, false);
-
-                            if (!faceB.IsDone()) {
-                                console.error("Revolve: MakeFace failed.");
-                            } else {
-                                const face = faceB.Face();
-                                // Choose an appropriate axis to avoid self-intersection
-                                // We calculate the bbox of the vertices to offset the axis if needed
-                                let minX = Infinity, minY = Infinity;
-                                vertices.forEach(v => {
-                                    if (v.x < minX) minX = v.x;
-                                    if (v.y < minY) minY = v.y;
-                                });
-
-                                const pnt = new ocAny.gp_Pnt_1();
-                                // To avoid intersecting the sketch, we put the axis at the min coordinate of the sketch
-                                pnt.SetCoord_2(0, minY - 1, 0);
-                                let dir = new ocAny.gp_Dir_4(1, 0, 0);
-                                if ((params as any).sweepVector) {
-                                    const sv = (params as any).sweepVector;
-                                    const len = Math.sqrt(sv[0] * sv[0] + sv[1] * sv[1] + sv[2] * sv[2]);
-                                    if (len > 0) {
-                                        dir = new ocAny.gp_Dir_4(sv[0] / len, sv[1] / len, sv[2] / len);
-                                    }
-                                } else if (plane === 'xy' || plane === 'xz') {
-                                    pnt.SetCoord_2(0, minY - 1, 0);
-                                    dir = new ocAny.gp_Dir_4(1, 0, 0); // Revolve around X horizontally
-                                } else if (plane === 'yz') {
-                                    pnt.SetCoord_2(0, 0, minY - 1);
-                                    dir = new ocAny.gp_Dir_4(0, 0, 1);
-                                }
-                                const ax1 = new ocAny.gp_Ax1_2(pnt, dir);
-
-                                const angleDef = ((params as any).angle !== undefined ? (params as any).angle : 360) * (Math.PI / 180);
-                                const revol = new ocAny.BRepPrimAPI_MakeRevol_1(face, ax1, angleDef, false);
-
-                                if (!revol.IsDone()) {
-                                    console.error("Revolve: MakeRevol failed. Angle: " + angleDef);
-                                } else {
-                                    currentShape = revol.Shape();
-                                }
-                                face.delete(); pnt.delete(); dir.delete(); ax1.delete(); revol.delete();
-                            }
-
-                            makePoly.delete(); faceB.delete(); wire.delete();
-                        } catch (err: unknown) {
-                            console.error(`Revolve WASM CRASH: ${err instanceof Error ? err.message : String(err)} `);
-                        }
-                    }
+                    currentShape = resolveImport(ocAny, type as string, nodeFileData as Uint8Array, node.id as string);
+                } else if (type === 'extrude') {
+                    currentShape = resolveExtrude(ocAny, nodes, params);
+                } else if (type === 'revolve') {
+                    currentShape = resolveRevolve(ocAny, nodes, params);
                 } else if (type === 'boolean') {
-                    const targetShape = buildShape((params as any).targetId);
-                    const toolShape = buildShape((params as any).toolId);
-                    if (targetShape && toolShape) {
-                        let boolOp;
-                        if ((params as any).operation === 'cut') {
-                            boolOp = new ocAny.BRepAlgoAPI_Cut_3(targetShape, toolShape);
-                        } else if ((params as any).operation === 'fuse') {
-                            boolOp = new ocAny.BRepAlgoAPI_Fuse_3(targetShape, toolShape);
-                        } else if ((params as any).operation === 'common') {
-                            boolOp = new ocAny.BRepAlgoAPI_Common_3(targetShape, toolShape);
-                        }
-                        if (boolOp) {
-                            boolOp.Build();
-                            if (boolOp.IsDone()) {
-                                currentShape = boolOp.Shape();
-                            } else {
-                                console.warn(`Boolean ${(params as any).operation} failed between ${(params as any).targetId} and ${(params as any).toolId} `);
-                                // Fallback to target if boolean fails
-                                currentShape = new ocAny.TopoDS_Shape_2(targetShape);
-                            }
-                            boolOp.delete();
-                        }
-                    } else if (targetShape) {
-                        currentShape = targetShape; // Fallback to Target if Tool fails to build or is missing
-                    }
-                    if (targetShape) (targetShape as any).delete();
-                    if (toolShape) (toolShape as any).delete();
+                    currentShape = resolveBoolean(ocAny, params, buildShape);
                 }
 
                 // Apply node properties + operations here!
                 if (currentShape) {
-                    // Apply explicit CAD operations
-                    const nodeOperations = (node as any).operations || [];
-                    if (nodeOperations && nodeOperations.length > 0) {
-                        for (const op of nodeOperations) {
-                            if (op.type === 'fillet') {
-                                const mkFillet: typeof ocAny.BRepFilletAPI_MakeFillet_1 = new ocAny.BRepFilletAPI_MakeFillet_1(currentShape, 0);
-                                const edgeExp = new ocAny.TopExp_Explorer_1();
-                                edgeExp.Init(currentShape, ocAny.TopAbs_ShapeEnum.TopAbs_EDGE, ocAny.TopAbs_ShapeEnum.TopAbs_SHAPE);
-                                let currentEdgeIdx = 0;
-                                let addedFillet = false;
-                                while (edgeExp.More()) {
-                                    if (currentEdgeIdx === op.edgeIndex) {
-                                        const edge = ocAny.TopoDS.Edge_1(edgeExp.Current());
-                                        mkFillet.Add_2(op.radius, edge);
-                                        edge.delete();
-                                        addedFillet = true;
-                                        break;
-                                    }
-                                    edgeExp.Next();
-                                    currentEdgeIdx++;
-                                }
-                                edgeExp.delete();
-                                if (addedFillet) {
-                                    const filletedShape = mkFillet.Shape();
-                                    currentShape.delete();
-                                    currentShape = filletedShape;
-                                }
-                                mkFillet.delete();
-                            }
-                        }
-                    }
-
-                    // Apply coordinate transform mapping (GTrsf implementation)
-                    const nodeTransform = (node as any).transform || { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] };
-                    const trsf = new ocAny.gp_Trsf_1();
-                    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(...nodeTransform.rotation));
-                    const ocQ = new ocAny.gp_Quaternion_2(q.x, q.y, q.z, q.w);
-                    trsf.SetRotation_2(ocQ);
-                    const vT = new ocAny.gp_Vec_4(nodeTransform.position[0], nodeTransform.position[1], nodeTransform.position[2]);
-                    trsf.SetTranslationPart(vT);
-                    const gTrsf = new ocAny.gp_GTrsf_2(trsf);
-                    gTrsf.SetValue(1, 1, gTrsf.Value(1, 1) * nodeTransform.scale[0]);
-                    gTrsf.SetValue(2, 2, gTrsf.Value(2, 2) * nodeTransform.scale[1]);
-                    gTrsf.SetValue(3, 3, gTrsf.Value(3, 3) * nodeTransform.scale[2]);
-
-                    const transformSys = new ocAny.BRepBuilderAPI_GTransform_2(currentShape, gTrsf, true);
-                    const transformedShape = transformSys.Shape();
-                    currentShape.delete();
-                    currentShape = transformedShape;
-
-                    transformSys.delete(); vT.delete(); ocQ.delete(); trsf.delete(); gTrsf.delete();
+                    currentShape = resolveOperations(ocAny, currentShape, node);
+                    currentShape = resolveTransform(ocAny, currentShape, node, nodes);
                 }
 
                 return currentShape;
@@ -1527,6 +1247,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                     } catch (internalE) { /* ignore */ }
                 }
             }
+
         } catch (outerE) {
             console.error("Caught exception during node component generation:", outerE);
         }
@@ -1606,10 +1327,10 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                 }}
             >
                 <color attach="background" args={[settings.backgroundColor]} />
-                <ambientLight intensity={settings.ambientLightIntensity} />
-                <directionalLight position={[10, 20, 10]} intensity={settings.directionalLightIntensity} />
-                <directionalLight position={[-10, -20, -10]} intensity={0.5} />
-                <directionalLight position={[0, 10, -20]} intensity={0.3} />
+                <ambientLight intensity={settings.ambientLightIntensity * Math.PI} />
+                <directionalLight position={[10, 20, 10]} intensity={settings.directionalLightIntensity * Math.PI} />
+                <directionalLight position={[-10, -20, -10]} intensity={0.5 * Math.PI} />
+                <directionalLight position={[0, 10, -20]} intensity={0.3 * Math.PI} />
                 {showGrid && <Grid args={[settings.gridSize, settings.gridSize]} cellColor="#334155" sectionColor="#475569" fadeDistance={400} />}
                 <OrbitControls makeDefault />
 
@@ -1637,10 +1358,19 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                         }
                         if (activeTool.startsWith('transform') && activeSnapPoint && trihedronGroupRef.current) {
                             e.stopPropagation();
-                            // Instead of modifying the mesh, we set a Pivot offset for the Gizmo relative to the mesh
-                            const diff = activeSnapPoint.clone().sub(trihedronGroupRef.current.position);
-                            setGizmoPivotOffset(diff);
+                            // Instead of a rigid world vector, convert the world snap point into the group's local coordinate space
+                            const localOffset = trihedronGroupRef.current.worldToLocal(activeSnapPoint.clone());
+                            setGizmoPivotOffset(localOffset);
                             setActiveSnapPoint(null); // clear after snap
+                        }
+                        if (activeTool === 'edit_revolve_axis' && activeSnapPoint && shapeType === 'revolve' && onUpdateNodeParam && activeNodeId) {
+                            e.stopPropagation();
+                            const currentDir = (shapeParams?.axis as any)?.dir || [0, 0, 1];
+                            onUpdateNodeParam(activeNodeId, 'axis', {
+                                pivot: [activeSnapPoint.x, activeSnapPoint.y, activeSnapPoint.z],
+                                dir: currentDir
+                            });
+                            setActiveSnapPoint(null);
                         }
                     }}
                 >
@@ -1669,6 +1399,7 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                         <group>
                             <mesh
                                 geometry={geometry}
+                                raycast={activeTool.startsWith('transform') ? null : undefined}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     if (activeTool === 'select') {
@@ -1725,62 +1456,127 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                     }
 
                     const depth = (shapeParams?.depth as number) || 50;
-                    const plane = (shapeParams?.plane as string) || 'xy';
-                    let dx = cx, dy = cy, dz = cz;
+                    const sourceExtrudeSketch = nodes.find(n => n.id === (shapeParams as any)?.sourceSketchId);
+                    const plane = (sourceExtrudeSketch?.params as any)?.plane || 'xy';
 
-                    // Offset drag handle along normal
-                    if (plane === 'xy') dz += depth;
-                    else if (plane === 'xz') dy += depth;
-                    else if (plane === 'yz') dx += depth;
+                    let nx = 0, ny = 0, nz = 1;
+                    if ((shapeParams as any)?.sweepVector) {
+                        const sv = (shapeParams as any).sweepVector;
+                        const len = Math.sqrt(sv[0] * sv[0] + sv[1] * sv[1] + sv[2] * sv[2]);
+                        if (len > 0) {
+                            nx = sv[0] / len;
+                            ny = sv[1] / len;
+                            nz = sv[2] / len;
+                        }
+                    } else {
+                        if (plane === 'xz') { nx = 0; ny = 1; nz = 0; }
+                        else if (plane === 'yz') { nx = 1; ny = 0; nz = 0; }
+                    }
+
+                    const position = new THREE.Vector3(cx + nx * depth, cy + ny * depth, cz + nz * depth);
+                    const dirVec = new THREE.Vector3(nx, ny, nz).normalize();
+                    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dirVec);
+                    const matrix = new THREE.Matrix4().compose(position, quaternion, new THREE.Vector3(1, 1, 1));
 
                     return (
-                        <TransformControls
-                            mode="translate"
-                            showX={plane === 'yz'} showY={plane === 'xz'} showZ={plane === 'xy'}
-                            position={[dx, dy, dz]}
-                            onObjectChange={(e) => {
-                                const ctrl = e?.target as any;
-                                if (ctrl && ctrl.object) {
-                                    let newDepth = depth;
-                                    if (plane === 'xy') newDepth = ctrl.object.position.z - cz;
-                                    else if (plane === 'xz') newDepth = ctrl.object.position.y - cy;
-                                    else if (plane === 'yz') newDepth = ctrl.object.position.x - cx;
-
-                                    newDepth = Math.max(0.1, newDepth);
-                                    onUpdateNodeParam(activeNodeId, 'depth', newDepth);
-                                }
+                        <PivotControls
+                            matrix={matrix}
+                            lineWidth={6}
+                            depthTest={false}
+                            activeAxes={[false, false, true]}
+                            disableRotations={true}
+                            disableSliders={true}
+                            axisColors={['#ef4444', '#22c55e', '#facc15']}
+                            scale={settings.gizmoScale}
+                            fixed={true}
+                            autoTransform={false}
+                            onDrag={(l) => {
+                                const p = new THREE.Vector3();
+                                l.decompose(p, new THREE.Quaternion(), new THREE.Vector3());
+                                const center = new THREE.Vector3(cx, cy, cz);
+                                let newDepth = p.clone().sub(center).dot(dirVec);
+                                newDepth = Math.max(0.1, newDepth);
+                                onUpdateNodeParam(activeNodeId, 'depth', newDepth);
                             }}
-                        >
-                            <mesh visible={false}>
-                                <boxGeometry args={[1, 1, 1]} />
-                                <meshBasicMaterial color="#f00" wireframe />
-                            </mesh>
-                        </TransformControls>
+                        />
                     );
                 })()}
 
-                {activeNodeId && shapeType === 'revolve' && activeTool === 'select' && onUpdateNodeParam && (
-                    <TransformControls
-                        mode="rotate"
-                        showX={false} showY={false} showZ={true}
-                        rotation={[0, 0, ((shapeParams?.angle as number) || 360) * (Math.PI / 180)]}
-                        onObjectChange={(e) => {
-                            const ctrl = e?.target as any;
-                            if (ctrl && ctrl.object) {
-                                let deg = ctrl.object.rotation.z * (180 / Math.PI);
-                                while (deg < 0) deg += 360;
-                                while (deg > 360) deg -= 360;
-                                if (deg < 1) deg = 360; // default to a full revolve if they zero it out
-                                onUpdateNodeParam(activeNodeId, 'angle', deg);
-                            }
-                        }}
-                    >
-                        <mesh visible={false}>
-                            <boxGeometry args={[1, 1, 1]} />
-                            <meshBasicMaterial color="#0f0" wireframe />
-                        </mesh>
-                    </TransformControls>
-                )}
+                {activeNodeId && shapeType === 'revolve' && (activeTool === 'select' || activeTool === 'edit_revolve_axis') && onUpdateNodeParam && (() => {
+                    const plane = (shapeParams?.plane as string) || 'xy';
+                    let defaultPivot = [0, 0, 0];
+                    let defaultDir = [1, 0, 0];
+
+                    const sourceSketch = nodes?.find(n => n.id === (shapeParams?.sourceSketchId as string));
+                    const pLines = (sourceSketch?.params as any)?.lines;
+                    let minY = Infinity;
+                    if (pLines && pLines.length > 0) {
+                        pLines.forEach((l: any) => {
+                            if (l.start.y < minY) minY = l.start.y;
+                            if (l.end.y < minY) minY = l.end.y;
+                        });
+                    }
+                    if (minY === Infinity) minY = 1; // Fallback if no lines
+
+                    if (plane === 'xy' || plane === 'xz') {
+                        defaultPivot = [0, minY - 1, 0];
+                        defaultDir = [1, 0, 0];
+                    } else if (plane === 'yz') {
+                        defaultPivot = [0, 0, minY - 1];
+                        defaultDir = [0, 0, 1];
+                    }
+
+                    const pivot = (shapeParams?.axis as any)?.pivot || defaultPivot;
+                    const dir = (shapeParams?.axis as any)?.dir || defaultDir;
+                    const position = new THREE.Vector3(pivot[0], pivot[1], pivot[2]);
+
+                    const dirVec = new THREE.Vector3(dir[0], dir[1], dir[2]).normalize();
+                    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dirVec);
+
+                    // Create a matrix from the position and quaternion for the PivotControls
+                    const matrix = new THREE.Matrix4().compose(position, quaternion, new THREE.Vector3(1, 1, 1));
+
+                    return (
+                        <group>
+                            {/* Render a visual indicator of the axis even when not dragging */}
+                            <lineSegments position={position} rotation={new THREE.Euler().setFromQuaternion(quaternion)} renderOrder={3}>
+                                <edgesGeometry args={[new THREE.CylinderGeometry(0.5, 0.5, 100, 8)]} />
+                                <lineBasicMaterial color="#3b82f6" linewidth={2} depthTest={false} transparent opacity={0.3} />
+                            </lineSegments>
+
+                            {/* Show Dragger only if edit_revolve_axis is the active tool */}
+                            {activeTool === 'edit_revolve_axis' && (
+                                <PivotControls
+                                    matrix={matrix}
+                                    lineWidth={6}
+                                    depthTest={false}
+                                    axisColors={['#ef4444', '#22c55e', '#3b82f6']}
+                                    scale={settings.gizmoScale}
+                                    fixed={true}
+                                    disableAxes={false}
+                                    disableSliders={false}
+                                    disableRotations={false}
+                                    activeAxes={[true, true, true]}
+                                    autoTransform={false}
+                                    onDrag={(l) => {
+                                        const p = new THREE.Vector3();
+                                        const q = new THREE.Quaternion();
+                                        const s = new THREE.Vector3();
+                                        l.decompose(p, q, s);
+
+                                        // The new direction is the local Z axis rotated by the new quaternion
+                                        const newDir = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
+
+                                        onUpdateNodeParam(activeNodeId, 'axis', {
+                                            pivot: [p.x, p.y, p.z],
+                                            dir: [newDir.x, newDir.y, newDir.z]
+                                        });
+                                    }}
+                                />
+                            )}
+                        </group>
+                    );
+                })()}
 
                 {renderMode === 'brep' && edgeGeometry && (
                     <lineSegments
@@ -1855,17 +1651,16 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                 {
                     (activeTool === 'sketch_plane' || activeTool === 'select_sweep_path' || draftingPlane || activeTool.startsWith('transform') || activeTool === 'select' || sketchLines.length > 0) && (
                         <group renderOrder={2}>
-                            {(activeTool.startsWith('transform') || (activeTool === 'select' && shapeType === 'sketch')) && trihedronGroupRef.current && (
+                            {(activeTool.startsWith('transform') || (activeTool === 'select' && shapeType === 'sketch')) && (
                                 <PivotControls
                                     ref={pivotRef}
                                     depthTest={false}
-                                    lineWidth={2}
-                                    axisColors={['#ef4444', '#22c55e', '#3b82f6']}
+                                    lineWidth={4}
                                     scale={settings.gizmoScale}
                                     fixed={true}
-                                    disableAxes={false}
-                                    disableSliders={false}
-                                    disableRotations={false}
+                                    disableAxes={activeTool === 'transform_rotate'}
+                                    disableSliders={true}
+                                    disableRotations={activeTool !== 'transform_rotate'}
                                     activeAxes={[true, true, true]}
                                     matrix={pivotMatrix}
                                     autoTransform={false}
@@ -1880,6 +1675,10 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                                     }}
                                     onDragEnd={() => { isDraggingPivot.current = false; }}
                                     onDrag={(l) => {
+                                        console.log("DEBUG_ON_DRAG_FIRED", {
+                                            l_elements: l.elements,
+                                            l_position: new THREE.Vector3().setFromMatrixPosition(l)
+                                        });
                                         if (onOriginTransformChange && initialOrigin.current) {
                                             // Compute object center relative to pivot's initial space
                                             const O = new THREE.Vector3(...initialOrigin.current.position);
@@ -1889,8 +1688,12 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                                             const qOffset = new THREE.Quaternion().setFromEuler(gizmoPivotRotationOffset);
                                             const qInitialGizmo = qInitialObj.clone().multiply(qOffset);
 
+                                            const worldOffset = gizmoPivotOffset.clone()
+                                                .applyEuler(new THREE.Euler(...initialOrigin.current.rotation))
+                                                .multiply(new THREE.Vector3(...initialOrigin.current.scale));
+
                                             const Mp = new THREE.Matrix4().compose(
-                                                O.clone().add(gizmoPivotOffset),
+                                                O.clone().add(worldOffset),
                                                 qInitialGizmo,
                                                 new THREE.Vector3(...initialOrigin.current.scale)
                                             );
@@ -2402,37 +2205,60 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                                 ))}
 
                                 {/* Camera Aligner */}
-                                {activeTool === 'select_sweep_path' && (
-                                    <group renderOrder={3}>
-                                        {sweepDraggerObj && (
-                                            <TransformControls
-                                                mode="rotate"
-                                                object={sweepDraggerObj}
-                                                onMouseUp={() => {
-                                                    if (sweepDraggerObj) {
-                                                        // Extract the forward vector (Z-axis) of the arrow
-                                                        const draggerForward = new THREE.Vector3(0, 0, 1).applyEuler(sweepDraggerObj.rotation).normalize();
-                                                        onSelectSweepVector?.([draggerForward.x, draggerForward.y, draggerForward.z], true);
-                                                    }
+                                {activeTool === 'select_sweep_path' && (() => {
+                                    const sweepSourceSketch = nodes.find(n => n.id === (shapeParams as any)?.sourceSketchId);
+                                    let nx = 0, ny = 0, nz = 1;
+                                    if ((shapeParams as any)?.sweepVector) {
+                                        const sv = (shapeParams as any).sweepVector;
+                                        const len = Math.sqrt(sv[0] * sv[0] + sv[1] * sv[1] + sv[2] * sv[2]);
+                                        if (len > 0) {
+                                            nx = sv[0] / len;
+                                            ny = sv[1] / len;
+                                            nz = sv[2] / len;
+                                        }
+                                    } else {
+                                        const plane = (sweepSourceSketch?.params as any)?.plane || 'xy';
+                                        if (plane === 'xz') { nx = 0; ny = 1; nz = 0; }
+                                        else if (plane === 'yz') { nx = 1; ny = 0; nz = 0; }
+                                    }
+                                    const dirVec = new THREE.Vector3(nx, ny, nz).normalize();
+                                    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), dirVec);
+
+                                    // Use sweepDraggerOrigin which defaults to origin, but can be positioned
+                                    const matrix = new THREE.Matrix4().compose(sweepDraggerOrigin, quaternion, new THREE.Vector3(1, 1, 1));
+
+                                    return (
+                                        <group renderOrder={3}>
+                                            <PivotControls
+                                                matrix={matrix}
+                                                lineWidth={4}
+                                                depthTest={false}
+                                                activeAxes={[true, true, true]}
+                                                disableAxes={true}
+                                                disableSliders={true}
+                                                disableRotations={false}
+                                                scale={settings.gizmoScale}
+                                                fixed={true}
+                                                autoTransform={false}
+                                                onDrag={(l) => {
+                                                    const p = new THREE.Vector3();
+                                                    const q = new THREE.Quaternion();
+                                                    const s = new THREE.Vector3();
+                                                    l.decompose(p, q, s);
+                                                    const draggerForward = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
+                                                    // Stream the dragged direction vector up to App.tsx
+                                                    onSelectSweepVector?.([draggerForward.x, draggerForward.y, draggerForward.z], true);
                                                 }}
                                             />
-                                        )}
-                                        <group ref={setSweepDraggerObj} position={sweepDraggerOrigin}>
-                                            <arrowHelper args={[new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 40, 0xf59e0b, 10, 5]} />
-                                            <mesh onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (sweepDraggerObj) {
-                                                    const draggerForward = new THREE.Vector3(0, 0, 1).applyEuler(sweepDraggerObj.rotation).normalize();
-                                                    onSelectSweepVector?.([draggerForward.x, draggerForward.y, draggerForward.z]);
-                                                }
-                                            }}>
-                                                <sphereGeometry args={[3, 16, 16]} />
-                                                <meshBasicMaterial color="#f59e0b" transparent opacity={0.5} />
-                                            </mesh>
+                                            {/* Render the visual Sweep Arrow synced precisely to the true state normal */}
+                                            <group position={sweepDraggerOrigin} quaternion={quaternion}>
+                                                <arrowHelper args={[new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0), 40, 0xf59e0b, 10, 5]} />
+                                            </group>
                                         </group>
-                                    </group>
-                                )}
+                                    );
+                                })()}
                                 <CameraAligner draftingPlane={draftingPlane} isoViewTrigger={isoViewTrigger} alignTrigger={cameraAlignTrigger} />
+                                <CameraTelemetry />
                             </group>
                         </group>
                     )
@@ -2561,6 +2387,191 @@ const CadViewer = forwardRef<CadViewerRef, CadViewerProps>(({
                     </div>
                 </div>
             )}
+
+            {/* Revolve Axis Control Overlay */}
+            {activeTool === 'edit_revolve_axis' && activeNodeId && shapeType === 'revolve' && (
+                (() => {
+                    const plane = (shapeParams?.plane as string) || 'xy';
+                    let defaultPivot = [0, 0, 0];
+                    let defaultDir = [1, 0, 0];
+
+                    const sourceSketch = nodes?.find(n => n.id === (shapeParams?.sourceSketchId as string));
+                    const pLines = (sourceSketch?.params as any)?.lines;
+                    let minY = Infinity;
+                    if (pLines && pLines.length > 0) {
+                        pLines.forEach((l: any) => {
+                            if (l.start.y < minY) minY = l.start.y;
+                            if (l.end.y < minY) minY = l.end.y;
+                        });
+                    }
+                    if (minY === Infinity) minY = 1;
+
+                    if (plane === 'xy' || plane === 'xz') {
+                        defaultPivot = [0, minY - 1, 0];
+                        defaultDir = [1, 0, 0];
+                    } else if (plane === 'yz') {
+                        defaultPivot = [0, 0, minY - 1];
+                        defaultDir = [0, 0, 1];
+                    }
+
+                    const ap = (shapeParams?.axis as any)?.pivot || defaultPivot;
+                    const dir = (shapeParams?.axis as any)?.dir || defaultDir;
+                    const vDir = new THREE.Vector3(dir[0], dir[1], dir[2]).normalize();
+                    const qDir = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), vDir);
+                    const euler = new THREE.Euler().setFromQuaternion(qDir);
+
+                    return (
+                        <div style={{
+                            position: 'absolute',
+                            top: '10px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            background: 'rgba(15, 23, 42, 0.85)',
+                            backdropFilter: 'blur(8px)',
+                            padding: '12px 16px',
+                            borderRadius: '12px',
+                            border: '1px solid #334155',
+                            color: 'white',
+                            fontFamily: 'system-ui, -apple-system, sans-serif',
+                            zIndex: 1000,
+                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
+                            width: '280px'
+                        }}>
+                            <h3 style={{ margin: '0 0 12px 0', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #334155', paddingBottom: '6px' }}>
+                                Revolve Axis Vector
+                            </h3>
+
+                            {/* Position */}
+                            <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#f87171' }}>Pivot X</label>
+                                    <input type="number" step="1" value={parseFloat((ap[0]).toFixed(2))} onChange={(e) => onUpdateNodeParam?.(activeNodeId, 'axis', { pivot: [parseFloat(e.target.value) || 0, ap[1], ap[2]], dir })} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5', borderRadius: '3px' }} />
+                                </div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#4ade80' }}>Pivot Y</label>
+                                    <input type="number" step="1" value={parseFloat((ap[1]).toFixed(2))} onChange={(e) => onUpdateNodeParam?.(activeNodeId, 'axis', { pivot: [ap[0], parseFloat(e.target.value) || 0, ap[2]], dir })} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', color: '#86efac', borderRadius: '3px' }} />
+                                </div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#60a5fa' }}>Pivot Z</label>
+                                    <input type="number" step="1" value={parseFloat((ap[2]).toFixed(2))} onChange={(e) => onUpdateNodeParam?.(activeNodeId, 'axis', { pivot: [ap[0], ap[1], parseFloat(e.target.value) || 0], dir })} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#93c5fd', borderRadius: '3px' }} />
+                                </div>
+                            </div>
+
+                            {/* Direction */}
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#f87171' }}>Dir X</label>
+                                    <input type="number" step="0.1" value={parseFloat((dir[0]).toFixed(3))} onChange={(e) => {
+                                        onUpdateNodeParam?.(activeNodeId, 'axis', { pivot: ap, dir: [parseFloat(e.target.value) || 0, dir[1], dir[2]] });
+                                    }} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5', borderRadius: '3px' }} />
+                                </div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#4ade80' }}>Dir Y</label>
+                                    <input type="number" step="0.1" value={parseFloat((dir[1]).toFixed(3))} onChange={(e) => {
+                                        onUpdateNodeParam?.(activeNodeId, 'axis', { pivot: ap, dir: [dir[0], parseFloat(e.target.value) || 0, dir[2]] });
+                                    }} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', color: '#86efac', borderRadius: '3px' }} />
+                                </div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#60a5fa' }}>Dir Z</label>
+                                    <input type="number" step="0.1" value={parseFloat((dir[2]).toFixed(3))} onChange={(e) => {
+                                        onUpdateNodeParam?.(activeNodeId, 'axis', { pivot: ap, dir: [dir[0], dir[1], parseFloat(e.target.value) || 0] });
+                                    }} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#93c5fd', borderRadius: '3px' }} />
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()
+            )}
+
+            {/* Sweep Vector Control Overlay */}
+            {activeTool === 'select_sweep_path' && activeNodeId && shapeType === 'extrude' && (
+                (() => {
+                    const params = (nodes.find(n => n.id === activeNodeId)?.params || {}) as any;
+                    const sourceSketchForUI = nodes.find(n => n.id === params.sourceSketchId);
+                    const defaultPlane = (sourceSketchForUI?.params as any)?.plane || 'xy';
+                    const defaultSv = defaultPlane === 'xz' ? [0, 1, 0] : defaultPlane === 'yz' ? [1, 0, 0] : [0, 0, 1];
+                    const sv = params.sweepVector || defaultSv;
+
+                    // Convert vector to euler angles to allow degree-based rotation like revolve axis
+                    let len = Math.sqrt(sv[0] * sv[0] + sv[1] * sv[1] + sv[2] * sv[2]);
+                    if (len === 0) len = 1;
+
+                    const vDir = new THREE.Vector3(sv[0] / len, sv[1] / len, sv[2] / len);
+                    const qDir = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), vDir);
+                    const euler = new THREE.Euler().setFromQuaternion(qDir);
+
+                    return (
+                        <div style={{
+                            position: 'absolute',
+                            top: '10px',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            background: 'rgba(15, 23, 42, 0.85)',
+                            backdropFilter: 'blur(8px)',
+                            padding: '12px 16px',
+                            borderRadius: '12px',
+                            border: '1px solid #334155',
+                            color: 'white',
+                            fontFamily: 'system-ui, -apple-system, sans-serif',
+                            zIndex: 1000,
+                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)',
+                            width: '280px'
+                        }}>
+                            <h3 style={{ margin: '0 0 12px 0', fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #334155', paddingBottom: '6px', display: 'flex', justifyContent: 'space-between' }}>
+                                Sweep Direction Vector
+                                <button style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.4)', color: '#60a5fa', fontSize: '0.6rem', padding: '2px 6px', borderRadius: '4px', cursor: 'pointer' }}
+                                    onClick={() => onSelectSweepVector?.(defaultSv as any, true)}>Reset</button>
+                            </h3>
+                            {/* Raw Vector Components */}
+                            <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#f87171' }}>Dir X</label>
+                                    <input type="number" step="0.1" value={parseFloat((sv[0]).toFixed(3))} onChange={(e) => onSelectSweepVector?.([parseFloat(e.target.value) || 0, sv[1], sv[2]], true)} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5', borderRadius: '3px' }} />
+                                </div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#4ade80' }}>Dir Y</label>
+                                    <input type="number" step="0.1" value={parseFloat((sv[1]).toFixed(3))} onChange={(e) => onSelectSweepVector?.([sv[0], parseFloat(e.target.value) || 0, sv[2]], true)} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', color: '#86efac', borderRadius: '3px' }} />
+                                </div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#60a5fa' }}>Dir Z</label>
+                                    <input type="number" step="0.1" value={parseFloat((sv[2]).toFixed(3))} onChange={(e) => onSelectSweepVector?.([sv[0], sv[1], parseFloat(e.target.value) || 0], true)} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#93c5fd', borderRadius: '3px' }} />
+                                </div>
+                            </div>
+
+                            {/* Rotate Angles (Degrees) */}
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#f87171' }}>Rot X (°)</label>
+                                    <input type="number" step="5" value={parseFloat((euler.x * 180 / Math.PI).toFixed(2))} onChange={(e) => {
+                                        const newE = new THREE.Euler((parseFloat(e.target.value) || 0) * Math.PI / 180, euler.y, euler.z);
+                                        const q = new THREE.Quaternion().setFromEuler(newE);
+                                        const newDir = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
+                                        onSelectSweepVector?.([newDir.x, newDir.y, newDir.z], true);
+                                    }} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#fca5a5', borderRadius: '3px' }} />
+                                </div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#4ade80' }}>Rot Y (°)</label>
+                                    <input type="number" step="5" value={parseFloat((euler.y * 180 / Math.PI).toFixed(2))} onChange={(e) => {
+                                        const newE = new THREE.Euler(euler.x, (parseFloat(e.target.value) || 0) * Math.PI / 180, euler.z);
+                                        const q = new THREE.Quaternion().setFromEuler(newE);
+                                        const newDir = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
+                                        onSelectSweepVector?.([newDir.x, newDir.y, newDir.z], true);
+                                    }} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)', color: '#86efac', borderRadius: '3px' }} />
+                                </div>
+                                <div className="input-group" style={{ flex: 1, marginBottom: 0 }}>
+                                    <label style={{ fontSize: '0.6rem', color: '#60a5fa' }}>Rot Z (°)</label>
+                                    <input type="number" step="5" value={parseFloat((euler.z * 180 / Math.PI).toFixed(2))} onChange={(e) => {
+                                        const newE = new THREE.Euler(euler.x, euler.y, (parseFloat(e.target.value) || 0) * Math.PI / 180);
+                                        const q = new THREE.Quaternion().setFromEuler(newE);
+                                        const newDir = new THREE.Vector3(0, 0, 1).applyQuaternion(q).normalize();
+                                        onSelectSweepVector?.([newDir.x, newDir.y, newDir.z], true);
+                                    }} style={{ width: '100%', padding: '2px 4px', fontSize: '0.75rem', background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', color: '#93c5fd', borderRadius: '3px' }} />
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()
+            )}
         </div>
     );
 });
@@ -2637,6 +2648,26 @@ function SnapSystem({ snapPoints, onActiveSnapChange, isActive = true }: { snapP
             <meshBasicMaterial color="#f87171" depthTest={false} transparent opacity={0.9} />
         </mesh>
     );
+}
+
+function CameraTelemetry() {
+    const { camera } = useThree();
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            (window as any).__projectToScreen = (x: number, y: number, z: number) => {
+                if (!camera) return { x: 0, y: 0 };
+                const vector = new THREE.Vector3(x, y, z);
+                vector.project(camera);
+                const width = window.innerWidth;
+                const height = window.innerHeight;
+                return {
+                    x: Math.round((vector.x + 1) * width / 2),
+                    y: Math.round((-vector.y + 1) * height / 2)
+                };
+            };
+        }
+    }, [camera]);
+    return null;
 }
 
 function CameraAligner({ draftingPlane, isoViewTrigger, alignTrigger }: { draftingPlane: 'xy' | 'xz' | 'yz' | null, isoViewTrigger?: number, alignTrigger?: number }) {

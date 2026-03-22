@@ -1,5 +1,9 @@
 # Electron OCCT CAD
 
+Caution, this is almost entirely coded by AI, use at your own risk.
+
+This project is also very far from a finished product. There are many bugs, broken things and poorly implemented features. It si a work in progress.
+
 An interactive 3D Computer-Aided Design (CAD) application built with React, Three.js, Electron, OpenCascade.js, and a 2D Constraint Solver.
 
 ## Features
