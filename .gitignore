@@ -30,3 +30,6 @@ scratch/
 playwright-report/
 test-results/
 .desloppify/
+
+# Pixi environment
+.pixi/

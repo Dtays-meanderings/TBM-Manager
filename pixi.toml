@@ -1,0 +1,15 @@
+[workspace]
+name = "electron-occt-cad"
+authors = ["Antigravity"]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[dependencies]
+nodejs = "20.*"
+
+[tasks]
+install = "npm install"
+dev = { cmd = "npm run dev", depends-on = ["install"] }
+build = { cmd = "npm run build", depends-on = ["install"] }
+lint = { cmd = "npm run lint", depends-on = ["install"] }
+preview = { cmd = "npm run preview", depends-on = ["install"] }

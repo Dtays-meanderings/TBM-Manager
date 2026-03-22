@@ -27,12 +27,16 @@ An interactive 3D Computer-Aided Design (CAD) application built with React, Thre
 ## Development
 
 ```bash
-# Install dependencies
-npm install
+# Initialize and install all conda/npm dependencies
+pixi install
+pixi run post-install
 
 # Run the Electron dev environment
-npm run dev
+pixi run dev
+
+# Run End-to-End Playwright Tests
+pixi run playwright
 
 # Build the application
-npm run build
+pixi run build
 ```
