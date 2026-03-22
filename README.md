@@ -15,6 +15,14 @@ An interactive 3D Computer-Aided Design (CAD) application built with React, Thre
 * **Interactive Tooling**: Parameter-driven geometry generation, interactive sketching, sweeping, filleting, and chamfering.
 * **Transform Gizmos**: Custom Local Coordinate System manipulation.
 
+## Recent Updates
+
+* **Transform Gizmos**: Enhanced Gizmo rendering, stateless dragging, xyz translation, and offset rotations.
+* **Interactive Operations**: Added Face/Edge selection via raycasting with features for Extrude, Revolve, and Filleting.
+* **Sketching & Snapping**: Introduced `SnapContext` and drafting alignment systems for precise drawing.
+* **UI Architecture**: Implemented `LeftSidebar`, `SettingsPanel`, and default Orthographic projections.
+* **Testing**: Established robust E2E Playwright test suites for Transform, Extrude, and Revolve operations.
+
 ## Development
 
 ```bash
